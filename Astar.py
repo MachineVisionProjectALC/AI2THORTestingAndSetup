@@ -134,10 +134,18 @@ def next_move(grid: np.ndarray, allow_diagonal: bool = True): # allow diagonal m
             # Lenient corner-cutting: only block diagonal if both orthogonal neighbors are blocked
             # for instance, if moving from (1,1) to (2,2), we check (1,2) and (2,1). If both are blocked, we cannot move diagonally.
             # prevents getting stuck near noisy stereo edges
+
+
+            #May or may not want to not use lenient corner cutting as a safety measure. We can use binary dilation for the occupancy grid
+            #this will inflate the size of obstacles
+            #with good enough grid resolution should be irrelevant if this is turned on or off
+            # Turning it off now - replace and with or
+
+            
             if delta_row != 0 and delta_col != 0:
                 ortho_1 = (current_coord[0] + delta_row, current_coord[1])
                 ortho_2 = (current_coord[0], current_coord[1] + delta_col)
-                if grid[ortho_1] == BLOCKED_CELL and grid[ortho_2] == BLOCKED_CELL:
+                if grid[ortho_1] == BLOCKED_CELL or grid[ortho_2] == BLOCKED_CELL:
                     continue
             # calculate the cost to reach the neighbor coordinate
             unknown_penalty = 0.15 if grid[neighbor_coord] == UNKNOWN_CELL else 0.0
