@@ -103,7 +103,7 @@ def next_move(grid: np.ndarray):
                 continue
 
             # calculate the cost to reach the neighbor coordinate
-            unknown_penalty = 0.15 if grid[neighbor_coord] == UNKNOWN_CELL else 0.0
+            unknown_penalty = 0.25 if grid[neighbor_coord] == UNKNOWN_CELL else 0.0
             # small penalty is added to the cost if the neighbor cell is unknown, to encourage exploration of known free cells first
             step_cost = 1.0 + unknown_penalty
             tentative_cost = current_cost + step_cost
