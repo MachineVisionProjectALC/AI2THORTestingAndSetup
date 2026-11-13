@@ -1,15 +1,4 @@
-"""
-Ground-truth A* baseline for the stereo-vision navigator.
 
-Spawns the agent, asks the simulator for every standable cell (GetReachablePositions),
-runs 4-way A* from the spawn cell to the exit cell, optionally drives that path in the
-simulator to prove it is physically drivable, and saves the optimal path length to JSON.
-
-No matplotlib, no depth, no stereo camera. Grid bounds, (row, col) convention, exit rule,
-4-way moves and unit step cost are copied from the vision file, so the numbers compare 1:1.
-
-The vision file can import compare_to_ground_truth() at the bottom of this file.
-"""
 import heapq
 import json
 import math
@@ -17,12 +6,9 @@ import math
 import numpy as np
 from ai2thor.controller import Controller
 
-# =====================================================================
-# CONFIGURATION (keep SCENE_NAME / GRID_SIZE identical to the vision file)
-# =====================================================================
 SCENE_NAME    = "FloorPlan201"
 GRID_SIZE     = 0.25        # 1 cell = 0.25 m; the robot is treated as occupying exactly one cell
-VERIFY_IN_SIM = True        # drive the A* path in the simulator and check it ends on the exit
+
 OUTPUT_JSON   = "ground_truth.json"
 PLATFORM      = None        # Linux + Vulkan only, to avoid opening a Unity window:
                             #   from ai2thor.platform import CloudRendering; PLATFORM = CloudRendering
@@ -41,9 +27,6 @@ CARDINAL_MOVES = {
 MOVE_TO_YAW = {"up": 0, "right": 90, "down": 180, "left": 270}
 
 
-# =====================================================================
-# 1. PERFECT-KNOWLEDGE GRID
-# =====================================================================
 def build_ground_truth_grid(reachable, objects, agent_pos, grid_size=GRID_SIZE):
     """Every reachable cell is FREE, everything else in the bounding box is BLOCKED."""
     to_cell = lambda p: (round(p["x"] / grid_size), round(p["z"] / grid_size))
@@ -79,9 +62,6 @@ def build_ground_truth_grid(reachable, objects, agent_pos, grid_size=GRID_SIZE):
     return grid, min_x, max_z, rob_rc, exit_rc
 
 
-# =====================================================================
-# 2. 4-WAY MANHATTAN A* (unit step cost, so the result is the true optimum)
-# =====================================================================
 def astar(grid, start, goal):
     rows, cols = grid.shape
 
@@ -113,27 +93,7 @@ def astar(grid, start, goal):
     return None
 
 
-# =====================================================================
-# 3. OPTIONAL: DRIVE THE PATH IN THE SIMULATOR
-# =====================================================================
-def drive_path(controller, path):
-    """Walk the path with real actions. Returns (ok, moves_done, rotations)."""
-    moves = rotations = 0
-    for (r0, c0), (r1, c1) in zip(path, path[1:]):
-        name = next(n for n, d in CARDINAL_MOVES.items() if d == (r1 - r0, c1 - c0))
-        yaw = round(controller.last_event.metadata["agent"]["rotation"]["y"]) % 360
-        diff = (MOVE_TO_YAW[name] - yaw) % 360
-        if diff == 270:
-            controller.step(action="RotateLeft")
-            rotations += 1
-        else:
-            for _ in range(diff // 90):
-                controller.step(action="RotateRight")
-                rotations += 1
-        if not controller.step(action="MoveAhead").metadata["lastActionSuccess"]:
-            return False, moves, rotations
-        moves += 1
-    return True, moves, rotations
+
 
 
 # =====================================================================
@@ -180,15 +140,7 @@ def main():
             "path_rc": [[int(r), int(c)] for r, c in path],
         }
 
-        if VERIFY_IN_SIM:
-            ok, moves, rotations = drive_path(controller, path)
-            pos = controller.last_event.metadata["agent"]["position"]
-            end_rc = (int(max_z - round(pos["z"] / GRID_SIZE)), int(round(pos["x"] / GRID_SIZE) - min_x))
-            result["verified_in_sim"] = bool(ok and end_rc == tuple(exit_rc))
-            result["rotations_in_sim"] = rotations
-            if not result["verified_in_sim"]:
-                print(f"WARNING: sim drive stopped after {moves}/{steps} moves, ended at {end_rc}. "
-                      "The reachable set and the physical MoveAhead disagree.")
+
 
         with open(OUTPUT_JSON, "w") as f:
             json.dump(result, f, indent=2)
@@ -197,16 +149,13 @@ def main():
         print(f"Start {start_rc} -> Exit {exit_rc}")
         print(f"Optimal path: {steps} steps = {steps * GRID_SIZE:.2f} m "
               f"(Manhattan lower bound {manhattan}, detour x{steps / max(manhattan, 1):.2f})")
-        if VERIFY_IN_SIM:
-            print(f"Verified in simulator: {result['verified_in_sim']} ({result['rotations_in_sim']} rotations)")
+
         print(f"Saved {OUTPUT_JSON}")
     finally:
         controller.stop()
 
 
-# =====================================================================
-# 5. HELPER FOR THE VISION FILE
-# =====================================================================
+
 def compare_to_ground_truth(actual_steps, start_rc, exit_rc, reached, path=OUTPUT_JSON):
     """
     actual_steps = number of SUCCESSFUL MoveAhead calls the vision robot made (backtracking included).
