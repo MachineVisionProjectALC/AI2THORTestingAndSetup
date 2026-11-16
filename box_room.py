@@ -9,10 +9,10 @@ from ai2thor.controller import Controller
 # =====================================================================
 # CONFIGURATION & CONSTANTS
 # =====================================================================
-SCENE_NAME     = "FloorPlan201"
+SCENE_NAME     = "FloorPlan_Train12_5"
 GRID_SIZE      = 0.25   # 0.25m step = 1 grid cell
-ROBOT_RADIUS   = 0.20   # SET THIS to the real (scaled) robot radius; only used for the startup check
-BASELINE       = 0.10   # 10 cm horizontal stereo baseline (right shift)
+ROBOT_RADIUS   = 0.125  # metres; planner clearance, not simulator collision size
+BASELINE       = 0.05  # 5 cm horizontal stereo baseline (right shift)
 IMG_W, IMG_H   = 300, 300   # what we ASK the simulator for (it may not honour this, see ClassicalStereoMapper)
 WORK_H         = 300        # height the vision pipeline actually runs at (width follows the real aspect ratio)
 FOV            = 90.0       # vertical FOV in degrees (Unity convention)
@@ -82,14 +82,15 @@ def sync_stereo_pair(controller: Controller) -> tuple[np.ndarray, np.ndarray, di
     return event.frame, event.third_party_camera_frames[0], event.metadata
 
 
-def init_environment():
-    # renderDepthImage is FALSE -> purely raw RGB stereo vision.
+def init_environment(render_depth=False):
+    # Ground-truth depth is optional and is never used by the stereo mapper.
     controller = Controller(
         scene=SCENE_NAME,
         gridSize=GRID_SIZE,
         snapToGrid=True,
         rotateStepDegrees=90,
-        renderDepthImage=False,
+        renderDepthImage=render_depth,
+        makeAgentsVisible=True,
         width=IMG_W,
         height=IMG_H,
         fieldOfView=FOV,          # FIX: was `fov=`, which is not an AI2-THOR parameter
@@ -149,7 +150,7 @@ def init_environment():
 def threshold_grid(grid: np.ndarray, log_odds: np.ndarray, visited_free: set):
     """
     Rewrite `grid` (in place) from log-odds. Robot/exit markers and cells the robot has stood on survive.
-    No inflation: the robot fits inside one cell, so blocked means blocked and nothing more.
+    This stores measured occupancy; the planner applies clearance separately.
     """
     special = (grid == ROBOT_LOCATION) | (grid == EXIT_LOCATION)
     saved = grid[special].copy()
@@ -248,7 +249,9 @@ class ClassicalStereoMapper:
         # Require local texture so blank drywall doesn't hallucinate depth
         grad_x = np.abs(cv2.Sobel(gray_l, cv2.CV_32F, 1, 0, ksize=3))
         grad_y = np.abs(cv2.Sobel(gray_l, cv2.CV_32F, 0, 1, ksize=3))
-        texture = np.hypot(grad_x, grad_y)
+        # Stereo matches a window, so assess texture over that window too. A
+        # per-pixel threshold discards the interiors of otherwise valid matches.
+        texture = cv2.boxFilter(np.hypot(grad_x, grad_y), -1, (7, 7))
 
         # Left border where the right camera has no overlap
         valid_border = self.uu >= self.num_disp
@@ -257,8 +260,9 @@ class ClassicalStereoMapper:
             valid_border &
             (disp_l > 1.5) &
             (disp_l < (self.num_disp - 4)) &
-            (lr_diff <= 1.2) &
-            (texture > 12.0)
+            (disp_r[v_idx, u_right] > 0) &
+            (lr_diff <= 1.5) &
+            (texture > 8.0)
         )
 
         clean_disp = np.zeros_like(disp_l)
@@ -413,6 +417,12 @@ class ClassicalStereoMapper:
 
         return disp, pts_sift
 
+    def disparity_for_display(self, rgb_left: np.ndarray, rgb_right: np.ndarray) -> np.ndarray:
+        """Compute disparity from the same stereo pair shown in the live view."""
+        gray_l = self.clahe.apply(cv2.cvtColor(self.to_work(rgb_left), cv2.COLOR_RGB2GRAY))
+        gray_r = self.clahe.apply(cv2.cvtColor(self.to_work(rgb_right), cv2.COLOR_RGB2GRAY))
+        return self.compute_clean_disparity(gray_l, gray_r)
+
 
 def scan_all_directions_stereo(
     controller: Controller,
@@ -444,7 +454,29 @@ def scan_all_directions_stereo(
 # =====================================================================
 # 3. 4-WAY MANHATTAN A* PATHFINDER
 # =====================================================================
-def next_move(grid: np.ndarray):
+def obstacle_clearance_mask(grid: np.ndarray, radius: float = ROBOT_RADIUS) -> np.ndarray:
+    """Block robot centers whose circular footprint overlaps an occupied square."""
+    if radius < 0:
+        raise ValueError("Robot radius must be non-negative")
+    blocked = grid == BLOCKED_CELL
+    clearance = blocked.copy()
+    rows, cols = grid.shape
+    reach = math.ceil((radius + GRID_SIZE / 2) / GRID_SIZE)
+    for dr in range(-reach, reach + 1):
+        for dc in range(-reach, reach + 1):
+            dx = max(abs(dc) * GRID_SIZE - GRID_SIZE / 2, 0.0)
+            dz = max(abs(dr) * GRID_SIZE - GRID_SIZE / 2, 0.0)
+            if dx * dx + dz * dz >= radius * radius or abs(dr) >= rows or abs(dc) >= cols:
+                continue
+            src_r = slice(max(0, -dr), min(rows, rows - dr))
+            src_c = slice(max(0, -dc), min(cols, cols - dc))
+            dst_r = slice(max(0, dr), min(rows, rows + dr))
+            dst_c = slice(max(0, dc), min(cols, cols + dc))
+            clearance[dst_r, dst_c] |= blocked[src_r, src_c]
+    return clearance
+
+
+def next_move(grid: np.ndarray, robot_radius: float = ROBOT_RADIUS):
     rows, cols = grid.shape
     robot_pts = np.argwhere(grid == ROBOT_LOCATION)
     exit_pts  = np.argwhere(grid == EXIT_LOCATION)
@@ -454,6 +486,7 @@ def next_move(grid: np.ndarray):
 
     start = tuple(int(v) for v in robot_pts[0])
     exits = [tuple(int(v) for v in p) for p in exit_pts]
+    clearance = obstacle_clearance_mask(grid, robot_radius)
 
     def heuristic(r, c):
         return min(abs(r - er) + abs(c - ec) for er, ec in exits)
@@ -487,7 +520,7 @@ def next_move(grid: np.ndarray):
             nr, nc = curr[0] + dr, curr[1] + dc
             neighbor = (nr, nc)
 
-            if not (0 <= nr < rows and 0 <= nc < cols) or grid[neighbor] == BLOCKED_CELL:
+            if not (0 <= nr < rows and 0 <= nc < cols) or clearance[neighbor]:
                 continue
 
             step_cost = 1.25 if grid[neighbor] == UNKNOWN_CELL else 1.0
@@ -597,9 +630,12 @@ class LiveStereoPlotter:
         self.ax_rgb.axis("off")
         self.ax_rgb.set_title("Left Head Camera (RGB)")
 
-        self.im_disp = self.ax_disp.imshow(np.zeros((work_h, work_w), dtype=np.float32), cmap="plasma", vmin=0, vmax=48)
+        disparity_cmap = plt.get_cmap("plasma").copy()
+        disparity_cmap.set_bad("#808080")  # no reliable match, not a measured distance
+        self.im_disp = self.ax_disp.imshow(np.ma.masked_all((work_h, work_w)), cmap=disparity_cmap, vmin=1.5, vmax=48)
         self.ax_disp.axis("off")
-        self.ax_disp.set_title("Classical SGBM Disparity")
+        self.ax_disp.set_title("SGBM Disparity (gray = no match)")
+        self.fig.colorbar(self.im_disp, ax=self.ax_disp, shrink=0.75, label="Disparity (pixels)")
         plt.tight_layout()
 
     def update(self, grid, path, rgb_frame, disp_frame, step_idx, status, false_mask=None):
@@ -615,7 +651,7 @@ class LiveStereoPlotter:
         if rgb_frame is not None:
             self.im_rgb.set_data(rgb_frame)
         if disp_frame is not None:
-            self.im_disp.set_data(np.clip(disp_frame, 0, 48))
+            self.im_disp.set_data(np.ma.masked_less_equal(disp_frame, 0))
 
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -636,10 +672,7 @@ if __name__ == "__main__":
 
     plotter = LiveStereoPlotter(occ_grid, stereo_mapper.W, stereo_mapper.H)
 
-    # No inflation is only safe if the robot fits inside one cell: radius <= cell / 2
-    print(f"Cell {GRID_SIZE} m, robot radius {ROBOT_RADIUS} m (max safe radius without inflation: {GRID_SIZE / 2} m)")
-    if ROBOT_RADIUS > GRID_SIZE / 2:
-        print("WARNING: robot is wider than a cell; expect bumps next to obstacles. Use a larger GRID_SIZE or a smaller robot.")
+    print(f"Cell {GRID_SIZE} m, planner robot radius {ROBOT_RADIUS} m (simulator collision size unchanged)")
 
     visited_vision = set()
     visited_free   = {rob_rc}  # cells the robot has physically stood on (guaranteed FREE)
@@ -655,7 +688,10 @@ if __name__ == "__main__":
             visited_vision.add(rob_rc)
 
         move_name, path = next_move(occ_grid)
-        frame_work = stereo_mapper.to_work(controller.last_event.frame)
+        # Always display a synchronized pair, including when revisiting a cell.
+        display_left, display_right, _ = sync_stereo_pair(controller)
+        frame_work = stereo_mapper.to_work(display_left)
+        last_disp = stereo_mapper.disparity_for_display(display_left, display_right)
         plotter.update(
             occ_grid, path, frame_work, last_disp, step,
             f"Robot: {rob_rc} -> Exit: {exit_rc} | Next: {move_name}",
@@ -683,6 +719,9 @@ if __name__ == "__main__":
 
         if rob_rc == exit_rc:
             print(f"[Step {step}] Reached exit at {rob_rc}!")
+            display_left, display_right, _ = sync_stereo_pair(controller)
+            frame_work = stereo_mapper.to_work(display_left)
+            last_disp = stereo_mapper.disparity_for_display(display_left, display_right)
             plotter.update(occ_grid, [], frame_work, last_disp, step, "GOAL REACHED!")
             break
 
