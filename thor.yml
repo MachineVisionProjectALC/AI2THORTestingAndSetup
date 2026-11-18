@@ -48,9 +48,11 @@ dependencies:
       - matplotlib==3.10.9
       - msgpack==1.2.4
       - numpy==2.2.6
+      - nvidia-ml-py==13.615.71
       - opencv-python==5.0.0.93
       - pillow==12.3.0
       - progressbar2==4.6.0
+      - psutil==7.2.2
       - pygame==2.6.1
       - pyparsing==3.3.3
       - python-dateutil==2.9.0.post0
