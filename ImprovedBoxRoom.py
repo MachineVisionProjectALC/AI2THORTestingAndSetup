@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from ai2thor.controller import Controller
-
+from nav_metrics import MetricsTracker                                   
 # =====================================================================
 # CONFIGURATION & CONSTANTS
 # =====================================================================
@@ -86,7 +86,7 @@ def init_environment():
         gridSize=GRID_SIZE,
         snapToGrid=True,
         rotateStepDegrees=90,
-        renderDepthImage=False,
+        renderDepthImage=False, # testing only, depth not used in classical stereo
         width=IMG_W,
         height=IMG_H,
         fieldOfView=FOV,
@@ -587,14 +587,26 @@ class LiveStereoPlotter:
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
         plt.pause(0.05)
-
-
 if __name__ == "__main__":
     controller, occ_grid, log_odds, rob_rc, exit_rc, pitch_deg = init_environment()
 
     left0, right0 = sync_stereo_rig(controller)
     stereo_mapper = ClassicalStereoMapper.from_frame(left0, pitch_deg=pitch_deg)
     plotter = LiveStereoPlotter(occ_grid, stereo_mapper.W, stereo_mapper.H)
+
+    # [METRICS] ------------------------------------------------------------
+    metrics = MetricsTracker(method_name="classical_stereo", scene=SCENE_NAME,
+                             grid_size=GRID_SIZE, half_grid=HALF_GRID_CELLS,
+                             depth_range=(0.30, MAX_RANGE))
+    metrics.attach(controller, GOAL_OFFSET_M)
+    metrics.start(baseline_s=3.0)          # records idle hardware draw first
+    sync_stereo_rig            = metrics.wrap("stereo_capture", sync_stereo_rig)
+    scan_all_directions_stereo = metrics.wrap("scan_total", scan_all_directions_stereo)
+    next_move                  = metrics.wrap_planner(next_move)
+    execute_move               = metrics.wrap_executor(execute_move)
+    metrics.wrap_mapper(stereo_mapper)
+    plotter.update             = metrics.wrap("plotting", plotter.update)
+    # ----------------------------------------------------------------------
 
     local_yaw      = 0
     visited_vision = set()
@@ -604,6 +616,8 @@ if __name__ == "__main__":
     retries = 0
     max_steps = 150
     for step in range(max_steps):
+        metrics.begin_step(step, occ_grid)                                   # [METRICS]
+
         if rob_rc not in visited_vision:
             last_disp, _, local_yaw = scan_all_directions_stereo(
                 controller, stereo_mapper, occ_grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw
@@ -620,6 +634,7 @@ if __name__ == "__main__":
         if move_name is None:
             if retries < 6:
                 retries += 1
+                metrics.note("replan_retry")                                 # [METRICS]
                 weak = (log_odds > 0) & (log_odds < BUMP_LOCK)
                 log_odds[weak] *= 0.35
                 threshold_grid(occ_grid, log_odds, visited_free, rob_rc, exit_rc)
@@ -640,6 +655,11 @@ if __name__ == "__main__":
             print(f"[Step {step}] Reached goal cell {rob_rc}!")
             plotter.update(occ_grid, [], frame_work, last_disp, step, "GOAL REACHED!")
             break
+
+    # [METRICS] ------------------------------------------------------------
+    metrics.finish(success=(rob_rc == exit_rc), final_rc=rob_rc,
+                   exit_rc=exit_rc, grid=occ_grid, max_steps=max_steps)
+    # ----------------------------------------------------------------------
 
     plt.ioff()
     plt.show()
