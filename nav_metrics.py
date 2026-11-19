@@ -29,6 +29,8 @@ from datetime import datetime
 
 import numpy as np
 
+import GroundTruthBaseline as gt_baseline
+
 try:
     import psutil
 except ImportError:  # pragma: no cover
@@ -299,6 +301,8 @@ class MetricsTracker:
         self.goal_local = None
         self.goal_world = None
         self.optimal_path_m = None
+        self.ai2thor_shortest_path_m = None
+        self.ground_truth_astar_m = None
         self.gt_free = None
         self._gt_dist = 0.0
         self._gt_last = None
@@ -355,7 +359,7 @@ class MetricsTracker:
             corners = ret.get("corners") if isinstance(ret, dict) else ret
             if ev.metadata.get("lastActionSuccess") and corners:
                 pts = [(pos["x"], pos["z"])] + [(p["x"], p["z"]) for p in corners]
-                self.optimal_path_m = float(sum(math.dist(a, b) for a, b in zip(pts, pts[1:])))
+                self.ai2thor_shortest_path_m = float(sum(math.dist(a, b) for a, b in zip(pts, pts[1:])))
         except Exception as e:
             print(f"[metrics] optimal path unavailable ({e})")
         try:  # reachable cells -> GT free-space mask in the robot's local grid
@@ -372,6 +376,16 @@ class MetricsTracker:
             self.gt_free = mask if mask.any() else None
         except Exception as e:
             print(f"[metrics] reachable-position GT unavailable ({e})")
+
+        if self.gt_free is not None:
+            start = (H, H)
+            goal = (H - round(self.goal_local[1] / G), H + round(self.goal_local[0] / G))
+            if all(0 <= v < size for v in goal) and self.gt_free[start] and self.gt_free[goal]:
+                grid = np.where(self.gt_free, gt_baseline.FREE_CELL, gt_baseline.BLOCKED_CELL)
+                path = gt_baseline.astar(grid, start, goal)
+                if path is not None:
+                    self.ground_truth_astar_m = (len(path) - 1) * G
+                    self.optimal_path_m = self.ground_truth_astar_m
 
     def start(self, baseline_s=0.0):
         """Start the hardware sampler. baseline_s>0 first records idle hardware draw (sim idle, algorithm not running)."""
@@ -580,6 +594,9 @@ class MetricsTracker:
             used, opt = self._gt_dist, self.optimal_path_m
             nav.update(success_gt=bool(ok_gt), final_goal_dist_gt_m=dist, path_length_gt_m=used,
                        optimal_path_m=opt,
+                       optimal_path_source="ground_truth_astar",
+                       ai2thor_shortest_path_m=self.ai2thor_shortest_path_m,
+                       ground_truth_astar_m=self.ground_truth_astar_m,
                        start_goal_euclid_m=math.hypot(*self.goal_local),
                        path_efficiency=(opt / used) if (opt and used > 0) else None,
                        spl=(float(ok_gt) * opt / max(used, opt)) if opt else None)

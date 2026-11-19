@@ -4,7 +4,6 @@ import json
 import math
 
 import numpy as np
-from ai2thor.controller import Controller
 
 SCENE_NAME    = "FloorPlan201"
 GRID_SIZE     = 0.25        # 1 cell = 0.25 m; the robot is treated as occupying exactly one cell
@@ -29,7 +28,13 @@ MOVE_TO_YAW = {"up": 0, "right": 90, "down": 180, "left": 270}
 
 def build_ground_truth_grid(reachable, objects, agent_pos, grid_size=GRID_SIZE):
     """Every reachable cell is FREE, everything else in the bounding box is BLOCKED."""
-    to_cell = lambda p: (round(p["x"] / grid_size), round(p["z"] / grid_size))
+    if grid_size <= 0 or not reachable:
+        raise ValueError("A positive grid size and reachable positions are required")
+    # Preserve the lattice offset of the spawn, including half-cell world offsets.
+    origin_x = agent_pos["x"] - round(agent_pos["x"] / grid_size) * grid_size
+    origin_z = agent_pos["z"] - round(agent_pos["z"] / grid_size) * grid_size
+    to_cell = lambda p: (round((p["x"] - origin_x) / grid_size),
+                         round((p["z"] - origin_z) / grid_size))
     reach_xz = [to_cell(p) for p in reachable]
     obj_xz = [to_cell(o["position"]) for o in objects]
 
@@ -37,7 +42,7 @@ def build_ground_truth_grid(reachable, objects, agent_pos, grid_size=GRID_SIZE):
         print("WARNING: two reachable positions quantise to the same cell. "
               "Check that the spawn position is a multiple of GRID_SIZE.")
 
-    # Same bounds as the vision file (including object positions) so (row, col) indices line up
+    # Include object positions in the bounds for the standalone visualization.
     all_x = [c[0] for c in reach_xz + obj_xz]
     all_z = [c[1] for c in reach_xz + obj_xz]
     min_x, max_x = min(all_x) - 1, max(all_x) + 1
@@ -50,12 +55,12 @@ def build_ground_truth_grid(reachable, objects, agent_pos, grid_size=GRID_SIZE):
     for gx, gz in reach_xz:
         grid[to_rc(gx, gz)] = FREE_CELL
 
-    # Exit rule identical to the vision file: farthest reachable cell (Euclidean) from the spawn
+    # Standalone task: farthest reachable cell (Euclidean) from the spawn.
     far = max(reachable, key=lambda p: math.hypot(p["x"] - agent_pos["x"], p["z"] - agent_pos["z"]))
     exit_rc = to_rc(*to_cell(far))
     rob_rc = to_rc(*to_cell(agent_pos))
     if grid[rob_rc] == BLOCKED_CELL:
-        print("WARNING: spawn cell is not in the reachable set (quantisation mismatch).")
+        raise ValueError("Spawn cell is absent from the reachable-position grid")
 
     grid[exit_rc] = EXIT_LOCATION
     grid[rob_rc] = ROBOT_LOCATION
@@ -64,6 +69,9 @@ def build_ground_truth_grid(reachable, objects, agent_pos, grid_size=GRID_SIZE):
 
 def astar(grid, start, goal):
     rows, cols = grid.shape
+    for r, c in (start, goal):
+        if not (0 <= r < rows and 0 <= c < cols) or grid[r, c] == BLOCKED_CELL:
+            return None
 
     def h(r, c):
         return abs(r - goal[0]) + abs(c - goal[1])
@@ -94,6 +102,8 @@ def astar(grid, start, goal):
 
 
 def main():
+    from ai2thor.controller import Controller
+
     kwargs = dict(
         scene=SCENE_NAME,
         gridSize=GRID_SIZE,
