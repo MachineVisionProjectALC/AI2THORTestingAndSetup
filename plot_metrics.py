@@ -46,6 +46,12 @@ def load(dirs):
         for p in sorted(glob.glob(os.path.join(d, "episode_*.json"))):
             with open(p) as f:
                 r = json.load(f)
+            # Earlier runs with an A* baseline still stored simulator-based ratios.
+            nav = r["navigation"]
+            opt, used = nav.get("ground_truth_astar_m"), nav.get("path_length_gt_m")
+            nav["path_efficiency"] = opt / used if opt is not None and used else None
+            nav["spl"] = (float(nav["success_gt"]) * opt / max(used, opt)
+                          if opt and used is not None and nav.get("success_gt") is not None else None)
             r["_path"] = p
             runs[r["meta"]["method"]].append(r)
     return runs
@@ -111,16 +117,16 @@ def success_bars(ax, R):
     for i, m in enumerate(ms):
         s = np.mean([bool(r["navigation"]["success"]) for r in R[m]])
         g = vals(R[m], "navigation.success_gt")
-        ax.bar(i - w / 2, s, w, color=COL[m], alpha=0.9, label="self-tracked" if i == 0 else None)
+        ax.bar(i - w / 2, s, w, color=COL[m], alpha=0.9, label="Agent-reported" if i == 0 else None)
         ax.text(i - w / 2, s + 0.01, f"{s:.2f}", ha="center", fontsize=7)
         if g:
             ax.bar(i + w / 2, np.mean(g), w, color=COL[m], alpha=0.45, hatch="//",
-                   label="ground truth" if i == 0 else None)
+                   label="Simulator-verified" if i == 0 else None)
             ax.text(i + w / 2, np.mean(g) + 0.01, f"{np.mean(g):.2f}", ha="center", fontsize=7)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{m}\n(n={len(R[m])})" for m in ms], fontsize=8)
     ax.set_ylim(0, 1.1)
-    ax.set_title("Success rate", fontsize=9)
+    ax.set_title("SLAM success rate", fontsize=9)
     ax.legend(fontsize=7, loc="lower right")
     ax.grid(axis="y", alpha=0.3)
 
@@ -141,24 +147,30 @@ def termination_bars(ax, R):
 
 
 def path_scatter(ax, R):
-    plotted = False
+    title = "SLAM path length vs. ground-truth A*"
+    count = 0
+    max_distance = 0
     for m, rs in R.items():
-        pts = [(r["navigation"]["optimal_path_m"], r["navigation"]["path_length_gt_m"], r["navigation"]["success"])
-               for r in rs if get(r, "navigation.optimal_path_m") and get(r, "navigation.path_length_gt_m") is not None]
+        pts = [(n["ground_truth_astar_m"], n["path_length_gt_m"], n["success"])
+               for n in (r["navigation"] for r in rs)
+               if n.get("ground_truth_astar_m") is not None and n.get("path_length_gt_m") is not None]
         if not pts:
             continue
-        plotted = True
+        count += len(pts)
         opt, used, ok = (np.array(v) for v in zip(*pts))
+        max_distance = max(max_distance, opt.max(), used.max())
         ok = ok.astype(bool)
         ax.scatter(opt[ok], used[ok], s=12, color=COL[m], alpha=0.6, label=f"{m} success")
         ax.scatter(opt[~ok], used[~ok], s=14, facecolors="none", edgecolors=COL[m], alpha=0.8, label=f"{m} fail")
-    if not plotted:
-        return nodata(ax, "Path length vs optimal", "no ground-truth path data")
-    lim = ax.get_xlim()[1]
-    ax.plot([0, lim], [0, lim], "k--", lw=0.8, label="optimal")
-    ax.set_xlabel("optimal path (m)", fontsize=8)
-    ax.set_ylabel("distance travelled (m)", fontsize=8)
-    ax.set_title("Path length vs optimal", fontsize=9)
+    if not count:
+        return nodata(ax, title, "No A* baseline data")
+    lim = max(1, max_distance * 1.05)
+    ax.plot([0, lim], [0, lim], "k--", lw=0.8, label="Equal distance")
+    ax.set(xlim=(0, lim), ylim=(0, lim))
+    ax.set_xlabel("Ground-truth A* path (m)", fontsize=8)
+    ax.set_ylabel("SLAM distance traveled (m)", fontsize=8)
+    total = sum(len(rs) for rs in R.values())
+    ax.set_title(title if count == total else f"{title}\n{count}/{total} episodes plotted", fontsize=9)
     ax.legend(fontsize=6)
     ax.grid(alpha=0.3)
 
@@ -342,11 +354,11 @@ def main():
 
         grid_page(pdf, "Navigation", 2, 3, [
             lambda ax: success_bars(ax, R),
-            lambda ax: box(ax, R, "navigation.spl", "SPL (success weighted by path length)"),
+            lambda ax: box(ax, R, "navigation.spl", "SPL (ground-truth A*)"),
             lambda ax: box(ax, R, "navigation.collisions", "Collisions per episode"),
             lambda ax: path_scatter(ax, R),
             lambda ax: termination_bars(ax, R),
-            lambda ax: box(ax, R, "navigation.path_efficiency", "Path efficiency (optimal / travelled)"),
+            lambda ax: box(ax, R, "navigation.path_efficiency", "Path efficiency (A* / traveled)"),
         ])
 
         grid_page(pdf, "Time to compute", 2, 3, [

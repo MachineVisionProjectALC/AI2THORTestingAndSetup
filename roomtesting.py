@@ -80,13 +80,14 @@ def sync_stereo_rig(controller: Controller, baseline: float = BASELINE) -> tuple
     return event.frame, event.third_party_camera_frames[0]
 
 
-def init_environment():
+def init_environment(render_depth=False):
+    """Enable simulator depth for evaluation with render_depth=True."""
     controller = Controller(
         scene=SCENE_NAME,
         gridSize=GRID_SIZE,
         snapToGrid=True,
         rotateStepDegrees=90,
-        renderDepthImage=False, # testing only, depth not used in classical stereo
+        renderDepthImage=render_depth,  # Optional ground truth; stereo uses RGB only.
         width=IMG_W,
         height=IMG_H,
         fieldOfView=FOV,
@@ -545,6 +546,8 @@ class LiveStereoPlotter:
         self.im_grid = self.ax_grid.imshow(grid, cmap=self.cmap, vmin=-2.5, vmax=2.5)
         self.path_line, = self.ax_grid.plot([], [], color="#00a86b", linewidth=1.8, marker=".", markersize=4,
                                             label="A* Planned Path")
+        self.taken_line, = self.ax_grid.plot([], [], color="#d62728", linewidth=2, marker=".", markersize=4,
+                                             label="Path Taken")
 
         self.ax_grid.set_xticks(np.arange(-0.5, grid.shape[1], 1), minor=True)
         self.ax_grid.set_yticks(np.arange(-0.5, grid.shape[0], 1), minor=True)
@@ -563,7 +566,7 @@ class LiveStereoPlotter:
         self.ax_disp.set_title("Classical SGBM Disparity")
         plt.tight_layout()
 
-    def update(self, grid, path, rgb_frame, disp_frame, step_idx, status):
+    def update(self, grid, path, rgb_frame, disp_frame, step_idx, status, taken_path=()):
         self.im_grid.set_data(grid)
 
         # Auto-zoom plot window around non-unknown cells so the large 81x81 grid stays readable
@@ -577,6 +580,7 @@ class LiveStereoPlotter:
             self.path_line.set_data([p[1] for p in path], [p[0] for p in path])
         else:
             self.path_line.set_data([], [])
+        self.taken_line.set_data([p[1] for p in taken_path], [p[0] for p in taken_path])
 
         self.ax_grid.set_title(f"Local Stereo Occupancy Grid (Step {step_idx})\n{status}")
         if rgb_frame is not None:
@@ -611,6 +615,7 @@ if __name__ == "__main__":
     local_yaw      = 0
     visited_vision = set()
     visited_free   = {rob_rc}
+    taken_path     = [rob_rc]
     last_disp      = None
 
     retries = 0
@@ -628,7 +633,7 @@ if __name__ == "__main__":
         frame_work = stereo_mapper.to_work(controller.last_event.frame)
         plotter.update(
             occ_grid, path, frame_work, last_disp, step,
-            f"Robot: {rob_rc} -> Goal: {exit_rc} | Next: {move_name}"
+            f"Robot: {rob_rc} -> Goal: {exit_rc} | Next: {move_name}", taken_path
         )
 
         if move_name is None:
@@ -649,12 +654,16 @@ if __name__ == "__main__":
         )
         if success:
             visited_free.add(rob_rc)
+            taken_path.append(rob_rc)
         print(f"[Step {step:02d}] Move: {move_name:<5} | Success: {str(success):<5} | Cell: {rob_rc} | Steps left: {len(path)-1}")
 
         if rob_rc == exit_rc:
             print(f"[Step {step}] Reached goal cell {rob_rc}!")
-            plotter.update(occ_grid, [], frame_work, last_disp, step, "GOAL REACHED!")
+            plotter.update(occ_grid, [], frame_work, last_disp, step, "GOAL REACHED!", taken_path)
             break
+
+        if step == max_steps - 1:
+            plotter.update(occ_grid, [], frame_work, last_disp, step, "STEP LIMIT REACHED", taken_path)
 
     # [METRICS] ------------------------------------------------------------
     metrics.finish(success=(rob_rc == exit_rc), final_rc=rob_rc,

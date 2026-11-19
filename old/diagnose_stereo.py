@@ -1,13 +1,19 @@
 """Compare the stereo pipeline with simulator depth without changing navigation.
 
-Run with the same Python environment as box_room.py: python diagnose_stereo.py
+Run from the project root: python stereotesting/diagnose_stereo.py
 Close each figure to inspect the next direction.
 """
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+from pathlib import Path
 
-from box_room import ClassicalStereoMapper, init_environment, sync_stereo_pair
+# Include the project root when this file is executed directly.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from old.box_room import ClassicalStereoMapper, init_environment, sync_stereo_pair
 
 
 def diagnose(mapper, left, right, depth, direction):
