@@ -1,0 +1,305 @@
+{
+  "meta": {
+    "method": "classical_stereo",
+    "scene": "FloorPlan_Val1_1",
+    "grid_size": 0.25,
+    "episode_id": "FloorPlan_Val1_1_default",
+    "split": "val",
+    "source": "scene_default",
+    "start_yaw_snapped": null,
+    "goal_selection": "farthest_euclid",
+    "goal_info": {
+      "euclid_m": 6.96419413859206,
+      "geodesic_m": 7.344107615487475,
+      "ratio": 1.0545523960611791,
+      "n_candidates": 176
+    },
+    "max_steps": 300,
+    "goal_local_m": [
+      -2.5,
+      -6.5
+    ],
+    "goal_world": [
+      9.500019973500724,
+      0.9009992480278015,
+      -4.49994806827895
+    ],
+    "timestamp": "2026-11-19T01:33:54",
+    "hardware": {
+      "cpu_cores_logical": 16
+    }
+  },
+  "navigation": {
+    "success": true,
+    "termination": "goal",
+    "nav_steps": 37,
+    "moves_attempted": 37,
+    "moves_ok": 36,
+    "collisions": 1,
+    "collision_rate": 0.02702702702702703,
+    "no_path_events": 0,
+    "replan_retries": 0,
+    "rotations": 156,
+    "path_length_m": 9.0,
+    "first_plan_length_m": 9.0,
+    "sim_actions": {
+      "RotateRight": 151,
+      "UpdateThirdPartyCamera": 144,
+      "MoveAhead": 37,
+      "RotateLeft": 5
+    },
+    "collision_log": [
+      {
+        "step": 21,
+        "move": "left",
+        "error": "Desk_49109193 is blocking Agent 0 from moving by (0.0000, 0.0000, -0.2500)."
+      }
+    ],
+    "success_gt": true,
+    "final_goal_dist_gt_m": 5.5640312565041736e-05,
+    "path_length_gt_m": 9.0,
+    "optimal_path_m": 9.0,
+    "optimal_path_source": "ground_truth_astar",
+    "ai2thor_shortest_path_m": 7.344125919982471,
+    "ground_truth_astar_m": 9.0,
+    "start_goal_euclid_m": 6.96419413859206,
+    "path_efficiency": 1.0,
+    "spl": 1.0,
+    "pose_error_m": 0.0
+  },
+  "timing": {
+    "total_wall_s": 14.058851829000105,
+    "per_step_wall_ms": {
+      "n": 37,
+      "mean": 379.9689683513542,
+      "median": 372.76318900012484,
+      "p95": 526.804519000234,
+      "min": 23.32910199993421,
+      "max": 542.2935599999619,
+      "std": 88.49146013217563
+    },
+    "per_step_compute_ms": {
+      "n": 37,
+      "mean": 243.32187740529244,
+      "median": 238.5819160003848,
+      "p95": 351.8914264001066,
+      "min": 0.2289230001224496,
+      "max": 402.614046999588,
+      "std": 72.44606674629317
+    },
+    "per_step_sim_ms": {
+      "n": 37,
+      "mean": 73.84513597298792,
+      "median": 67.59663999991972,
+      "p95": 107.30742960040513,
+      "min": 22.966686000017944,
+      "max": 128.82719099980022,
+      "std": 18.22588549457997
+    },
+    "per_step_plot_ms": {
+      "n": 37,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "total_compute_s": 9.00290946399582,
+    "total_sim_s": 2.732270031000553,
+    "total_plot_s": 0.0,
+    "compute_stages": [
+      "mapping",
+      "planning"
+    ],
+    "per_call_ms": {
+      "sim_step": {
+        "n": 337,
+        "mean": 14.917954468825723,
+        "median": 13.827634999870497,
+        "p95": 19.619427999987234,
+        "min": 9.025775999816688,
+        "max": 113.20182000008572,
+        "std": 7.405851202023829
+      },
+      "stereo_capture": {
+        "n": 144,
+        "mean": 13.43544450001054,
+        "median": 12.10783500027901,
+        "p95": 17.467499200256494,
+        "min": 9.124812999743881,
+        "max": 48.69099200004712,
+        "std": 5.717362809644474
+      },
+      "disparity": {
+        "n": 144,
+        "mean": 27.137517111084563,
+        "median": 26.29382949999126,
+        "p95": 33.81674025038137,
+        "min": 22.228258000268397,
+        "max": 39.81974899988927,
+        "std": 3.3302676043568495
+      },
+      "sift_match": {
+        "n": 144,
+        "mean": 30.08766341667663,
+        "median": 16.04970200014577,
+        "p95": 76.79613945001618,
+        "min": 11.696001000018441,
+        "max": 148.09514399985346,
+        "std": 26.87913556898545
+      },
+      "mapping": {
+        "n": 144,
+        "mean": 62.40893615969235,
+        "median": 50.02646000002642,
+        "p95": 111.49888974978234,
+        "min": 36.32729799983281,
+        "max": 175.35469599988573,
+        "std": 27.669409802527596
+      },
+      "scan_total": {
+        "n": 36,
+        "mean": 367.74874477776444,
+        "median": 355.34744649999084,
+        "p95": 494.34463575028076,
+        "min": 279.6686819997376,
+        "max": 510.65961699987383,
+        "std": 63.698691967833796
+      },
+      "planning": {
+        "n": 37,
+        "mean": 0.43304478378706485,
+        "median": 0.2841680002347857,
+        "p95": 1.0473526001987916,
+        "min": 0.13667800021721632,
+        "max": 1.3515579998966132,
+        "std": 0.3051231665830236
+      },
+      "execute_move": {
+        "n": 37,
+        "mean": 21.55583845943339,
+        "median": 17.12980599995717,
+        "p95": 37.58865699992378,
+        "min": 11.072128999785491,
+        "max": 75.22484099990834,
+        "std": 11.639136833624788
+      }
+    },
+    "compute_fraction_of_wall": 0.6403730243052235
+  },
+  "resources": {
+    "cpu_py_pct": {
+      "n": 70,
+      "mean": 676.2785714285716,
+      "median": 674.0999999999999,
+      "p95": 942.3,
+      "min": 160.3,
+      "max": 964.4,
+      "std": 161.31941242928767
+    },
+    "cpu_sim_pct": {
+      "n": 70,
+      "mean": 41.46714285714286,
+      "median": 39.7,
+      "p95": 59.655,
+      "min": 9.4,
+      "max": 152.9,
+      "std": 18.296422143832007
+    },
+    "cpu_sys_pct": {
+      "n": 70,
+      "mean": 49.019999999999996,
+      "median": 47.5,
+      "p95": 68.755,
+      "min": 22.5,
+      "max": 79.4,
+      "std": 12.037377502714499
+    },
+    "rss_py_mb": {
+      "n": 70,
+      "mean": 233.52483258928572,
+      "median": 236.11328125,
+      "p95": 236.3501953125,
+      "min": 192.83984375,
+      "max": 236.35546875,
+      "std": 6.180524145455368
+    },
+    "rss_sim_mb": {
+      "n": 70,
+      "mean": 428.7377790178571,
+      "median": 428.84765625,
+      "p95": 428.94921875,
+      "min": 426.3984375,
+      "max": 429.0,
+      "std": 0.35888633886251237
+    },
+    "gpu_util_pct": null,
+    "gpu_mem_used_mb": null,
+    "gpu_mem_proc_mb": null,
+    "gpu_power_w": null,
+    "cpu_power_w": null,
+    "idle_mean": {
+      "cpu_py_pct": 5.2,
+      "cpu_sim_pct": 0.0,
+      "cpu_sys_pct": 4.16,
+      "rss_py_mb": 164.6709375,
+      "rss_sim_mb": 424.79703125,
+      "gpu_util_pct": null,
+      "gpu_mem_used_mb": null,
+      "gpu_mem_proc_mb": null,
+      "gpu_power_w": null,
+      "cpu_power_w": null
+    },
+    "n_samples": 70,
+    "sample_interval_s": 0.2,
+    "gpu_energy_j": null,
+    "gpu_energy_net_j": null,
+    "cpu_energy_j": null,
+    "cpu_energy_net_j": null,
+    "total_energy_j": null,
+    "energy_per_m_j": null,
+    "energy_per_step_j": null,
+    "note": "gpu_* includes the Unity renderer; compare against cpu_py/rss_py/gpu_mem_proc for the algorithm's own footprint"
+  },
+  "vision": {
+    "frames": 144,
+    "disp_density": {
+      "n": 144,
+      "mean": 0.2289138888888889,
+      "median": 0.2189111111111111,
+      "p95": 0.3500894444444444,
+      "min": 0.14258888888888888,
+      "max": 0.37695555555555554,
+      "std": 0.048228577579084615
+    },
+    "sift_matches": {
+      "n": 144,
+      "mean": 17.15277777777778,
+      "median": 10.0,
+      "p95": 35.0,
+      "min": 0.0,
+      "max": 257.0,
+      "std": 33.77855159475472
+    },
+    "depth_coverage": null,
+    "depth_mae_m": null,
+    "depth_rmse_m": null,
+    "depth_absrel": null,
+    "depth_delta1": null,
+    "disp_bad1": null
+  },
+  "map": {
+    "final": {
+      "n_free": 195,
+      "n_blocked": 178,
+      "free_precision": 0.5948717948717949,
+      "false_free_cells": 79,
+      "phantom_obstacle_cells": 1,
+      "phantom_obstacle_rate": 0.0056179775280898875,
+      "reachable_coverage": 0.6590909090909091
+    },
+    "max_phantom_obstacle_cells": 1,
+    "max_false_free_cells": 82
+  }
+}

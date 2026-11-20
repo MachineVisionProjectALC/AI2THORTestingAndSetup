@@ -1,0 +1,305 @@
+{
+  "meta": {
+    "method": "classical_stereo",
+    "scene": "FloorPlan_Val1_2",
+    "grid_size": 0.25,
+    "episode_id": "FloorPlan_Val1_2_default",
+    "split": "val",
+    "source": "scene_default",
+    "start_yaw_snapped": null,
+    "goal_selection": "farthest_euclid",
+    "goal_info": {
+      "euclid_m": 5.75543221661067,
+      "geodesic_m": 5.790996737223107,
+      "ratio": 1.0061792962324871,
+      "n_candidates": 205
+    },
+    "max_steps": 300,
+    "goal_local_m": [
+      -5.75,
+      -0.25
+    ],
+    "goal_world": [
+      9.499998801511444,
+      0.9009992480278015,
+      -1.249972436285591
+    ],
+    "timestamp": "2026-11-19T01:34:07",
+    "hardware": {
+      "cpu_cores_logical": 16
+    }
+  },
+  "navigation": {
+    "success": true,
+    "termination": "goal",
+    "nav_steps": 27,
+    "moves_attempted": 27,
+    "moves_ok": 26,
+    "collisions": 1,
+    "collision_rate": 0.037037037037037035,
+    "no_path_events": 0,
+    "replan_retries": 0,
+    "rotations": 110,
+    "path_length_m": 6.5,
+    "first_plan_length_m": 6.0,
+    "sim_actions": {
+      "RotateRight": 106,
+      "UpdateThirdPartyCamera": 104,
+      "RotateLeft": 4,
+      "MoveAhead": 27
+    },
+    "collision_log": [
+      {
+        "step": 10,
+        "move": "left",
+        "error": "Dresser_7c312e73 is blocking Agent 0 from moving by (0.2500, 0.0000, 0.0000)."
+      }
+    ],
+    "success_gt": true,
+    "final_goal_dist_gt_m": 2.7589757643676817e-05,
+    "path_length_gt_m": 6.5,
+    "optimal_path_m": 6.5,
+    "optimal_path_source": "ground_truth_astar",
+    "ai2thor_shortest_path_m": 5.7910014694164875,
+    "ground_truth_astar_m": 6.5,
+    "start_goal_euclid_m": 5.755432216610669,
+    "path_efficiency": 1.0,
+    "spl": 1.0,
+    "pose_error_m": 0.0
+  },
+  "timing": {
+    "total_wall_s": 8.925305360000038,
+    "per_step_wall_ms": {
+      "n": 27,
+      "mean": 330.5668651851866,
+      "median": 347.8980810000394,
+      "p95": 404.5451900002263,
+      "min": 24.422140999831754,
+      "max": 439.1807480001262,
+      "std": 71.85348276246467
+    },
+    "per_step_compute_ms": {
+      "n": 27,
+      "mean": 205.16912629616652,
+      "median": 207.03749100039204,
+      "p95": 268.678317499689,
+      "min": 0.2514559996598109,
+      "max": 308.7819129991658,
+      "std": 54.73595118065867
+    },
+    "per_step_sim_ms": {
+      "n": 27,
+      "mean": 65.93530533330151,
+      "median": 62.40216599962878,
+      "p95": 101.29253000050085,
+      "min": 24.03249400003915,
+      "max": 106.18456600013815,
+      "std": 15.215069158525761
+    },
+    "per_step_plot_ms": {
+      "n": 27,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "total_compute_s": 5.539566409996496,
+    "total_sim_s": 1.780253243999141,
+    "total_plot_s": 0.0,
+    "compute_stages": [
+      "mapping",
+      "planning"
+    ],
+    "per_call_ms": {
+      "sim_step": {
+        "n": 241,
+        "mean": 13.967186560159115,
+        "median": 13.058840000212513,
+        "p95": 18.956574999720033,
+        "min": 8.569342000100733,
+        "max": 50.76016900011382,
+        "std": 4.633724606657119
+      },
+      "stereo_capture": {
+        "n": 104,
+        "mean": 12.14705316346436,
+        "median": 11.665698500110011,
+        "p95": 14.952509149952673,
+        "min": 8.588817999680032,
+        "max": 44.655122000222036,
+        "std": 3.7557959892580253
+      },
+      "disparity": {
+        "n": 104,
+        "mean": 27.09429282691207,
+        "median": 26.284847500164688,
+        "p95": 32.87237850006477,
+        "min": 22.105787000327837,
+        "max": 43.96387399992818,
+        "std": 3.573751383767284
+      },
+      "sift_match": {
+        "n": 104,
+        "mean": 21.760176192305362,
+        "median": 12.338135499931013,
+        "p95": 76.83848715012115,
+        "min": 11.544863999915833,
+        "max": 90.04191999974864,
+        "std": 21.40826412935845
+      },
+      "mapping": {
+        "n": 104,
+        "mean": 53.19975537498487,
+        "median": 43.059070500021335,
+        "p95": 109.7591666499738,
+        "min": 36.27832500023942,
+        "max": 118.80383499965319,
+        "std": 22.65586369440148
+      },
+      "scan_total": {
+        "n": 26,
+        "mean": 322.9686407692218,
+        "median": 326.5581484999984,
+        "p95": 376.29615275000106,
+        "min": 267.2602529996766,
+        "max": 419.7553760000119,
+        "std": 40.010160231419434
+      },
+      "planning": {
+        "n": 27,
+        "mean": 0.25155003696555567,
+        "median": 0.2514559996598109,
+        "p95": 0.40333650008506083,
+        "min": 0.13025699990976136,
+        "max": 0.40957600003821426,
+        "std": 0.0823470161111296
+      },
+      "execute_move": {
+        "n": 27,
+        "mean": 19.14665611106843,
+        "median": 16.16838599966286,
+        "p95": 31.512872599932958,
+        "min": 11.392906999844854,
+        "max": 58.636758999909944,
+        "std": 9.192477530022192
+      }
+    },
+    "compute_fraction_of_wall": 0.6206584745909995
+  },
+  "resources": {
+    "cpu_py_pct": {
+      "n": 44,
+      "mean": 647.3545454545455,
+      "median": 592.75,
+      "p95": 908.23,
+      "min": 419.2,
+      "max": 955.2,
+      "std": 147.82019860527345
+    },
+    "cpu_sim_pct": {
+      "n": 44,
+      "mean": 44.0590909090909,
+      "median": 42.45,
+      "p95": 55.925,
+      "min": 24.6,
+      "max": 153.8,
+      "std": 19.054268409679214
+    },
+    "cpu_sys_pct": {
+      "n": 44,
+      "mean": 44.37499999999999,
+      "median": 42.599999999999994,
+      "p95": 58.97,
+      "min": 28.8,
+      "max": 59.1,
+      "std": 8.208757103351164
+    },
+    "rss_py_mb": {
+      "n": 44,
+      "mean": 238.76127485795453,
+      "median": 239.2265625,
+      "p95": 239.2421875,
+      "min": 236.5078125,
+      "max": 239.2421875,
+      "std": 0.9562631773773513
+    },
+    "rss_sim_mb": {
+      "n": 44,
+      "mean": 438.70205965909093,
+      "median": 438.76953125,
+      "p95": 438.90625,
+      "min": 436.7578125,
+      "max": 438.921875,
+      "std": 0.3173576679685252
+    },
+    "gpu_util_pct": null,
+    "gpu_mem_used_mb": null,
+    "gpu_mem_proc_mb": null,
+    "gpu_power_w": null,
+    "cpu_power_w": null,
+    "idle_mean": {
+      "cpu_py_pct": 5.2,
+      "cpu_sim_pct": 0.0,
+      "cpu_sys_pct": 4.16,
+      "rss_py_mb": 164.6709375,
+      "rss_sim_mb": 424.79703125,
+      "gpu_util_pct": null,
+      "gpu_mem_used_mb": null,
+      "gpu_mem_proc_mb": null,
+      "gpu_power_w": null,
+      "cpu_power_w": null
+    },
+    "n_samples": 44,
+    "sample_interval_s": 0.2,
+    "gpu_energy_j": null,
+    "gpu_energy_net_j": null,
+    "cpu_energy_j": null,
+    "cpu_energy_net_j": null,
+    "total_energy_j": null,
+    "energy_per_m_j": null,
+    "energy_per_step_j": null,
+    "note": "gpu_* includes the Unity renderer; compare against cpu_py/rss_py/gpu_mem_proc for the algorithm's own footprint"
+  },
+  "vision": {
+    "frames": 104,
+    "disp_density": {
+      "n": 104,
+      "mean": 0.24559786324786323,
+      "median": 0.23123888888888888,
+      "p95": 0.33548555555555554,
+      "min": 0.1822777777777778,
+      "max": 0.3537222222222222,
+      "std": 0.04329896371701122
+    },
+    "sift_matches": {
+      "n": 104,
+      "mean": 14.798076923076923,
+      "median": 12.0,
+      "p95": 46.34999999999994,
+      "min": 0.0,
+      "max": 84.0,
+      "std": 15.759844181002155
+    },
+    "depth_coverage": null,
+    "depth_mae_m": null,
+    "depth_rmse_m": null,
+    "depth_absrel": null,
+    "depth_delta1": null,
+    "disp_bad1": null
+  },
+  "map": {
+    "final": {
+      "n_free": 141,
+      "n_blocked": 132,
+      "free_precision": 0.7801418439716312,
+      "false_free_cells": 31,
+      "phantom_obstacle_cells": 0,
+      "phantom_obstacle_rate": 0.0,
+      "reachable_coverage": 0.5365853658536586
+    },
+    "max_phantom_obstacle_cells": 0,
+    "max_false_free_cells": 33
+  }
+}

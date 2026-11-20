@@ -34,5 +34,9 @@ dependencies:
       # AI2-THOR simulator used by box_room.py and GroundTruthBaseline.py
       - ai2thor
 
+      # Deep-learning stereo (DeepStereoMapper uses torchvision's RAFT-Stereo)
+      - torch
+      - torchvision
+
       # Optional experiment tracking
       - wandb

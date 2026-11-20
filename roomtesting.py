@@ -156,7 +156,7 @@ def threshold_grid(
 
 
 # =====================================================================
-# 2. CLASSICAL VISION: SIFT + EPIPOLAR + SGBM + PITCH-CORRECTED 3D
+# 2.A CLASSICAL VISION: SIFT + EPIPOLAR + SGBM + PITCH-CORRECTED 3D
 # =====================================================================
 class ClassicalStereoMapper:
     def __init__(self, src_w: int, src_h: int, pitch_deg: float = 15.0, fov=FOV, baseline=BASELINE, work_h=WORK_H):
@@ -300,6 +300,23 @@ class ClassicalStereoMapper:
         if len(pts_cam) == 0:
             return disp, pts_sift
 
+        self.integrate_points(pts_cam, grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw)
+        return disp, pts_sift
+
+    def integrate_points(
+        self,
+        pts_cam: np.ndarray,
+        grid: np.ndarray,
+        log_odds: np.ndarray,
+        visited_free: set,
+        rob_rc: tuple[int, int],
+        exit_rc: tuple[int, int],
+        local_yaw: int
+    ):
+        """
+        Shared back end (used by both the classical and deep mappers): camera-frame 3D points
+        (x right, y up, z forward, metres) -> pitch correction -> local world -> log-odds grid.
+        """
         # Undo downward camera pitch to get horizontal forward (z_horiz) and vertical (y_level)
         cos_p, sin_p = math.cos(self.pitch_rad), math.sin(self.pitch_rad)
         x_level = pts_cam[:, 0]
@@ -377,7 +394,142 @@ class ClassicalStereoMapper:
                     log_odds[nr, nc] = max(log_odds[nr, nc] - 0.55, -4.0)
 
         threshold_grid(grid, log_odds, visited_free, rob_rc, exit_rc)
-        return disp, pts_sift
+
+
+# =====================================================================
+# 2.B DEEP LEARNING VISION: RAFT-STEREO + PITCH-CORRECTED 3D
+# =====================================================================
+class DeepStereoMapper(ClassicalStereoMapper):
+    """
+    Drop-in replacement for ClassicalStereoMapper. Only the disparity step changes:
+    the official RAFT-Stereo network (https://github.com/princeton-vl/RAFT-Stereo) predicts dense
+    disparity from the raw RGB pair. Back-projection, pitch correction and log-odds mapping are
+    inherited unchanged, so the two runs differ ONLY in how disparity is estimated.
+
+    One-time setup (from the project folder):
+        git clone https://github.com/princeton-vl/RAFT-Stereo
+    then put the checkpoint (default: raftstereo-realtime.pth) in RAFT-Stereo/models/.
+    If `bash download_models.sh` fails, download it by hand in a browser from either
+      - Dropbox:      https://www.dropbox.com/scl/fi/5khx1bhz84dapi8vtwapg/models.zip?rlkey=ggddrn1du1iiq6mgc2dsdpmwi&dl=1
+      - Google Drive: https://drive.google.com/drive/folders/1booUFYEXmsdombVuglatP0nZXb5qI89J
+    Override locations with the RAFT_STEREO_DIR / RAFT_STEREO_CKPT environment variables.
+    """
+    # name -> (checkpoint file, architecture flags, default refinement iterations)
+    PRESETS = {
+        "middlebury": ("raftstereo-middlebury.pth", dict(), 32),
+        "eth3d":      ("raftstereo-eth3d.pth", dict(), 32),
+        "realtime":   ("raftstereo-realtime.pth",
+                       dict(shared_backbone=True, n_downsample=3, n_gru_layers=2, slow_fast_gru=True), 7),
+    }
+
+    def __init__(self, *args, preset: str = "realtime", num_iters: int | None = None,
+                 repo_dir: str | None = None, device: str | None = None, **kw):
+        super().__init__(*args, **kw)
+        import os, sys, argparse
+        import torch
+        self.torch = torch
+        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.preset = preset
+
+        ckpt_name, arch, default_iters = self.PRESETS[preset]
+        self.num_iters = num_iters or default_iters
+
+        repo = os.path.abspath(repo_dir or os.environ.get(
+            "RAFT_STEREO_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "RAFT-Stereo")))
+        ckpt = os.environ.get("RAFT_STEREO_CKPT") or os.path.join(repo, "models", ckpt_name)
+        if not os.path.isdir(os.path.join(repo, "core")):
+            raise FileNotFoundError(
+                f"RAFT-Stereo repo not found at {repo}. Run `git clone https://github.com/princeton-vl/RAFT-Stereo` "
+                "next to roomtesting.py (or set RAFT_STEREO_DIR).")
+        if not os.path.isfile(ckpt):
+            raise FileNotFoundError(
+                f"Checkpoint {ckpt} not found. Download '{ckpt_name}' (models.zip from the RAFT-Stereo README: "
+                "Dropbox or Google Drive) and place it there, or set RAFT_STEREO_CKPT to its path.")
+
+        # The repo's modules import each other as `core.*`, so its root must be on sys.path.
+        if repo not in sys.path:
+            sys.path.insert(0, repo)
+        from core.raft_stereo import RAFTStereo
+        from core.utils.utils import InputPadder
+        self._InputPadder = InputPadder
+
+        # Same flags as RAFT-Stereo's demo.py (defaults + the preset's architecture overrides).
+        use_amp = self.device.type == "cuda"
+        model_args = argparse.Namespace(
+            hidden_dims=[128] * 3, corr_implementation="reg", shared_backbone=False,
+            corr_levels=4, corr_radius=4, n_downsample=2, context_norm="batch",
+            slow_fast_gru=False, n_gru_layers=3, mixed_precision=use_amp)
+        for k, v in arch.items():
+            setattr(model_args, k, v)
+
+        model = RAFTStereo(model_args)
+        state = torch.load(ckpt, map_location=self.device)
+        state = {k[len("module."):] if k.startswith("module.") else k: v for k, v in state.items()}
+        model.load_state_dict(state)
+        self.model = model.to(self.device).eval()
+        print(f"[deep] RAFT-Stereo '{preset}' loaded from {ckpt} on {self.device} ({self.num_iters} iters)")
+
+        # Metrics (nav_metrics.MetricsTracker) can use this to synchronise GPU timing.
+        self.cuda_sync = (lambda: torch.cuda.synchronize()) if self.device.type == "cuda" else (lambda: None)
+
+    def compute_clean_disparity(self, rgb_l: np.ndarray, rgb_r: np.ndarray) -> np.ndarray:
+        """Takes RGB work-size images (not gray) and returns a float32 disparity map, 0 = invalid."""
+        torch = self.torch
+
+        def to_tensor(rgb):  # RAFT-Stereo takes float RGB in [0, 255] and normalises internally
+            return torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1).float()[None].to(self.device)
+
+        left, right = to_tensor(rgb_l), to_tensor(rgb_r)
+        padder = self._InputPadder(left.shape, divis_by=32)
+        left, right = padder.pad(left, right)
+
+        with torch.inference_mode():
+            _, flow_up = self.model(left, right, iters=self.num_iters, test_mode=True)
+            flow_up = padder.unpad(flow_up)
+        self.cuda_sync()
+
+        disp = -flow_up[0, 0].float().cpu().numpy()      # RAFT-Stereo outputs negative disparity
+
+        # Keep only disparities inside the usable depth band that land inside the right image.
+        fb = self.fx * self.baseline
+        d_min, d_max = fb / MAX_RANGE, fb / 0.30
+        ok = np.isfinite(disp) & (disp >= d_min) & (disp <= d_max) & ((self.uu - disp) >= 0)
+
+        clean_disp = np.zeros((self.H, self.W), dtype=np.float32)
+        clean_disp[ok] = disp[ok]
+        return clean_disp
+
+    def update_grid_from_stereo(
+        self,
+        grid: np.ndarray,
+        log_odds: np.ndarray,
+        visited_free: set,
+        rob_rc: tuple[int, int],
+        exit_rc: tuple[int, int],
+        local_yaw: int,
+        rgb_left: np.ndarray,
+        rgb_right: np.ndarray,
+        max_range: float = MAX_RANGE
+    ):
+        disp = self.compute_clean_disparity(self.to_work(rgb_left), self.to_work(rgb_right))
+        valid = disp > 0
+        no_sift = np.empty((0, 3), dtype=np.float32)    # deep pipeline has no sparse feature matches
+
+        if not valid.any():
+            return disp, no_sift
+
+        z_cam = (self.fx * self.baseline) / disp[valid]
+        in_range = (z_cam >= 0.30) & (z_cam <= max_range)
+        z_pts = z_cam[in_range]
+        x_cam = (self.uu[valid][in_range] - self.cx) * z_pts / self.fx
+        y_cam = -(self.vv[valid][in_range] - self.cy) * z_pts / self.fy
+
+        if len(z_pts) == 0:
+            return disp, no_sift
+
+        pts_cam = np.stack([x_cam, y_cam, z_pts], axis=-1)
+        self.integrate_points(pts_cam, grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw)
+        return disp, no_sift
 
 
 def scan_all_directions_stereo(
@@ -533,9 +685,11 @@ def execute_move(
 # 5. LIVE 3-PANEL VISUALIZER (AUTO-CROPPED TO EXPLORED REGION)
 # =====================================================================
 class LiveStereoPlotter:
-    def __init__(self, grid: np.ndarray, work_w: int, work_h: int):
+    def __init__(self, grid: np.ndarray, work_w: int, work_h: int, method_label: str = "Classical SGBM"):
         plt.ion()
+        self.method_label = method_label
         self.fig, (self.ax_grid, self.ax_rgb, self.ax_disp) = plt.subplots(1, 3, figsize=(16, 5.5))
+        self.fig.canvas.manager.set_window_title(f"{method_label} run") if self.fig.canvas.manager else None
         self.cmap = ListedColormap([
             "#2b83ba",  # -2: Robot (Blue)
             "#fdae61",  # -1: Exit (Orange)
@@ -563,7 +717,7 @@ class LiveStereoPlotter:
 
         self.im_disp = self.ax_disp.imshow(np.zeros((work_h, work_w), dtype=np.float32), cmap="plasma", vmin=0, vmax=64)
         self.ax_disp.axis("off")
-        self.ax_disp.set_title("Classical SGBM Disparity")
+        self.ax_disp.set_title(f"{method_label} Disparity")
         plt.tight_layout()
 
     def update(self, grid, path, rgb_frame, disp_frame, step_idx, status, taken_path=()):
@@ -582,7 +736,7 @@ class LiveStereoPlotter:
             self.path_line.set_data([], [])
         self.taken_line.set_data([p[1] for p in taken_path], [p[0] for p in taken_path])
 
-        self.ax_grid.set_title(f"Local Stereo Occupancy Grid (Step {step_idx})\n{status}")
+        self.ax_grid.set_title(f"Local Stereo Occupancy Grid - {self.method_label} (Step {step_idx})\n{status}")
         if rgb_frame is not None:
             self.im_rgb.set_data(rgb_frame)
         if disp_frame is not None:
@@ -591,85 +745,123 @@ class LiveStereoPlotter:
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
         plt.pause(0.05)
-if __name__ == "__main__":
+
+
+# =====================================================================
+# 6. NAVIGATION RUN (one full episode with a chosen vision method)
+# =====================================================================
+def run_navigation(method: str, idle_baseline=None):
+    """
+    Runs one full navigation episode.
+      method = "classical" -> ClassicalStereoMapper (SIFT + SGBM)
+      method = "deep"      -> DeepStereoMapper (RAFT-Stereo)
+    Everything except the mapper is identical between methods. Returns the MetricsTracker.
+    """
+    # The helper functions below are looked up as module globals by scan_all_directions_stereo,
+    # so the metrics wrappers are installed on the module and ALWAYS restored in `finally`
+    # (otherwise the second run would wrap the first run's wrappers).
+    global sync_stereo_rig, scan_all_directions_stereo, next_move, execute_move
+    originals = (sync_stereo_rig, scan_all_directions_stereo, next_move, execute_move)
+
+    labels = {"classical": ("classical_stereo", "Classical SGBM"),
+              "deep":      ("deep_stereo",      "Deep RAFT-Stereo")}
+    method_name, label = labels[method]
+    print(f"\n{'=' * 70}\n RUN: {label}  ({method_name})\n{'=' * 70}")
+
     controller, occ_grid, log_odds, rob_rc, exit_rc, pitch_deg = init_environment()
+    try:
+        left0, right0 = sync_stereo_rig(controller)
+        mapper_cls = DeepStereoMapper if method == "deep" else ClassicalStereoMapper
+        stereo_mapper = mapper_cls.from_frame(left0, pitch_deg=pitch_deg)
+        plotter = LiveStereoPlotter(occ_grid, stereo_mapper.W, stereo_mapper.H, method_label=label)
 
-    left0, right0 = sync_stereo_rig(controller)
-    stereo_mapper = ClassicalStereoMapper.from_frame(left0, pitch_deg=pitch_deg)
-    plotter = LiveStereoPlotter(occ_grid, stereo_mapper.W, stereo_mapper.H)
+        # [METRICS] ------------------------------------------------------------
+        metrics = MetricsTracker(method_name=method_name, scene=SCENE_NAME,
+                                 grid_size=GRID_SIZE, half_grid=HALF_GRID_CELLS,
+                                 depth_range=(0.30, MAX_RANGE),
+                                 cuda_sync=getattr(stereo_mapper, "cuda_sync", None),
+                                 idle_baseline=idle_baseline)
+        metrics.attach(controller, GOAL_OFFSET_M)
+        metrics.start(baseline_s=3.0 if idle_baseline is None else 0.0)   # idle draw measured once
+        sync_stereo_rig            = metrics.wrap("stereo_capture", sync_stereo_rig)
+        scan_all_directions_stereo = metrics.wrap("scan_total", scan_all_directions_stereo)
+        next_move                  = metrics.wrap_planner(next_move)
+        execute_move               = metrics.wrap_executor(execute_move)
+        metrics.wrap_mapper(stereo_mapper)
+        plotter.update             = metrics.wrap("plotting", plotter.update)
+        # ----------------------------------------------------------------------
 
-    # [METRICS] ------------------------------------------------------------
-    metrics = MetricsTracker(method_name="classical_stereo", scene=SCENE_NAME,
-                             grid_size=GRID_SIZE, half_grid=HALF_GRID_CELLS,
-                             depth_range=(0.30, MAX_RANGE))
-    metrics.attach(controller, GOAL_OFFSET_M)
-    metrics.start(baseline_s=3.0)          # records idle hardware draw first
-    sync_stereo_rig            = metrics.wrap("stereo_capture", sync_stereo_rig)
-    scan_all_directions_stereo = metrics.wrap("scan_total", scan_all_directions_stereo)
-    next_move                  = metrics.wrap_planner(next_move)
-    execute_move               = metrics.wrap_executor(execute_move)
-    metrics.wrap_mapper(stereo_mapper)
-    plotter.update             = metrics.wrap("plotting", plotter.update)
-    # ----------------------------------------------------------------------
+        local_yaw      = 0
+        visited_vision = set()
+        visited_free   = {rob_rc}
+        taken_path     = [rob_rc]
+        last_disp      = None
+        frame_work     = stereo_mapper.to_work(controller.last_event.frame)
 
-    local_yaw      = 0
-    visited_vision = set()
-    visited_free   = {rob_rc}
-    taken_path     = [rob_rc]
-    last_disp      = None
-
-    retries = 0
-    max_steps = 150
-    for step in range(max_steps):
-        metrics.begin_step(step, occ_grid)                                   # [METRICS]
-
-        if rob_rc not in visited_vision:
-            last_disp, _, local_yaw = scan_all_directions_stereo(
-                controller, stereo_mapper, occ_grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw
-            )
-            visited_vision.add(rob_rc)
-
-        move_name, path = next_move(occ_grid)
-        frame_work = stereo_mapper.to_work(controller.last_event.frame)
-        plotter.update(
-            occ_grid, path, frame_work, last_disp, step,
-            f"Robot: {rob_rc} -> Goal: {exit_rc} | Next: {move_name}", taken_path
-        )
-
-        if move_name is None:
-            if retries < 6:
-                retries += 1
-                metrics.note("replan_retry")                                 # [METRICS]
-                weak = (log_odds > 0) & (log_odds < BUMP_LOCK)
-                log_odds[weak] *= 0.35
-                threshold_grid(occ_grid, log_odds, visited_free, rob_rc, exit_rc)
-                print(f"[Step {step}] No path: decaying uncertain obstacles (retry {retries}/6)")
-                continue
-            print(f"[Step {step}] No valid path found!")
-            break
         retries = 0
+        max_steps = 150
+        for step in range(max_steps):
+            metrics.begin_step(step, occ_grid)                                   # [METRICS]
 
-        success, rob_rc, local_yaw = execute_move(
-            controller, move_name, occ_grid, log_odds, rob_rc, exit_rc, local_yaw
-        )
-        if success:
-            visited_free.add(rob_rc)
-            taken_path.append(rob_rc)
-        print(f"[Step {step:02d}] Move: {move_name:<5} | Success: {str(success):<5} | Cell: {rob_rc} | Steps left: {len(path)-1}")
+            if rob_rc not in visited_vision:
+                last_disp, _, local_yaw = scan_all_directions_stereo(
+                    controller, stereo_mapper, occ_grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw
+                )
+                visited_vision.add(rob_rc)
 
-        if rob_rc == exit_rc:
-            print(f"[Step {step}] Reached goal cell {rob_rc}!")
-            plotter.update(occ_grid, [], frame_work, last_disp, step, "GOAL REACHED!", taken_path)
-            break
+            move_name, path = next_move(occ_grid)
+            frame_work = stereo_mapper.to_work(controller.last_event.frame)
+            plotter.update(
+                occ_grid, path, frame_work, last_disp, step,
+                f"Robot: {rob_rc} -> Goal: {exit_rc} | Next: {move_name}", taken_path
+            )
 
-        if step == max_steps - 1:
-            plotter.update(occ_grid, [], frame_work, last_disp, step, "STEP LIMIT REACHED", taken_path)
+            if move_name is None:
+                if retries < 6:
+                    retries += 1
+                    metrics.note("replan_retry")                                 # [METRICS]
+                    weak = (log_odds > 0) & (log_odds < BUMP_LOCK)
+                    log_odds[weak] *= 0.35
+                    threshold_grid(occ_grid, log_odds, visited_free, rob_rc, exit_rc)
+                    print(f"[Step {step}] No path: decaying uncertain obstacles (retry {retries}/6)")
+                    continue
+                print(f"[Step {step}] No valid path found!")
+                break
+            retries = 0
 
-    # [METRICS] ------------------------------------------------------------
-    metrics.finish(success=(rob_rc == exit_rc), final_rc=rob_rc,
-                   exit_rc=exit_rc, grid=occ_grid, max_steps=max_steps)
-    # ----------------------------------------------------------------------
+            success, rob_rc, local_yaw = execute_move(
+                controller, move_name, occ_grid, log_odds, rob_rc, exit_rc, local_yaw
+            )
+            if success:
+                visited_free.add(rob_rc)
+                taken_path.append(rob_rc)
+            print(f"[Step {step:02d}] Move: {move_name:<5} | Success: {str(success):<5} | Cell: {rob_rc} | Steps left: {len(path)-1}")
 
+            if rob_rc == exit_rc:
+                print(f"[Step {step}] Reached goal cell {rob_rc}!")
+                plotter.update(occ_grid, [], frame_work, last_disp, step, "GOAL REACHED!", taken_path)
+                break
+
+            if step == max_steps - 1:
+                plotter.update(occ_grid, [], frame_work, last_disp, step, "STEP LIMIT REACHED", taken_path)
+
+        # [METRICS] ------------------------------------------------------------
+        metrics.finish(success=(rob_rc == exit_rc), final_rc=rob_rc,
+                       exit_rc=exit_rc, grid=occ_grid, max_steps=max_steps)
+        # ----------------------------------------------------------------------
+        return metrics
+    finally:
+        sync_stereo_rig, scan_all_directions_stereo, next_move, execute_move = originals
+        controller.stop()
+
+
+if __name__ == "__main__":
+    # Run 1: classical vision. Run 2 starts only after run 1 has completely finished.
+    run_navigation("deep")
+    #classical_metrics = run_navigation("classical")
+    # Reuse run 1's idle-power baseline so run 2 doesn't spend another 3 s on it.
+    #run_navigation("deep", idle_baseline=getattr(classical_metrics, "last_idle_measured", None))
+
+    # Keep both live figures open until the user closes them.
     plt.ioff()
     plt.show()
-    controller.stop()
