@@ -18,6 +18,7 @@ WORK_H          = 300
 FOV             = 90.0   # Vertical FOV in degrees (Unity convention)
 MAX_RANGE       = 2.2    # Cut off at 2.2m to prevent z^2 stereo depth bleed into empty cells
 BUMP_LOCK       = 4.0    # Log-odds written ONLY by a physical collision
+# decreases log odds to inhumanly small probability
 
 # Relative goal offset from spawn in the robot's initial local frame:
 # (meters_right_of_spawn, meters_ahead_of_spawn) — zero Unity floorplan knowledge
