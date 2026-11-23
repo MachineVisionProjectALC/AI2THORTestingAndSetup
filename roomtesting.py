@@ -1,3 +1,7 @@
+# Classical CV algorithms for robot navigation around a RoboTHOR scene
+# other file allows us to test on 15 scenes and then export to pdf
+# this is the main file with algorithms
+
 """
 PERFECT INFORMATION STILL USED:
   * MoveAhead == exactly one cell, Rotate* == exactly 90 deg (dead reckoning)
@@ -25,47 +29,87 @@ from ai2thor.controller import Controller
 # CONFIGURATION & CONSTANTS
 # =====================================================================
 SCENE_NAME      = "FloorPlan_Train6_5"
-GRID_SIZE       = 0.25
-IMG_W, IMG_H    = 300, 300
+GRID_SIZE       = 0.25 # default grid size
+IMG_W, IMG_H    = 300, 300 # cannot handle full rendering resolution
 FOV             = 90.0     # vertical FOV (Unity convention); square image so horizontal is the same
-BASELINE        = 0.12
+BASELINE        = 0.12 # 12cm distance from robot, we want farther, but also dont want to look into a wall as it goes from right of the robot, robot radius is 0.2m
 LOOK_DOWN_DEG   = 30       # AI2-THOR's default maximum -> floor blind spot = h / tan(30+45) = 0.42 m
 CAMERA_HEIGHT   = 1.576    # ONLY used when USE_RANSAC_GROUND = False (oracle) and for the final printout
-MIN_RANGE       = 0.2
-MAX_RANGE       = 2.2      # beyond this the stereo depth noise (grows as z^2) swamps the height thresholds
+# default Global camera height
+MIN_RANGE       = 0.2 # set to the robot radius
+MAX_RANGE       = 2.2 # 2 meter range, depth errors grow larger as max_range increases
+# try increasing this number to 5 or more and see what happens
+
 GOAL_OFFSET_M   = (10.00, 10.50)   # (meters right, meters ahead) of spawn
+# here this is unreachable which allows us to see the robot exploring the entire apartment
 HALF_GRID_CELLS = 40       # 81x81 local grid (+/-10 m)
+# robot spawns in the middle of the grid
 MAX_STEPS       = 300
-ROBOT_RADIUS_M  = 0.20     # evaluation only: GT reachable cells are robot-CENTRE positions (C-space)
+# 300 steps should be enough to explore the entire map for any robothor scene
+ROBOT_RADIUS_M  = 0.20     # evaluation only, ground truth reachable cells are robot-center positions (C-space)
+# configuration space in robotics is the set of all possible positions of the robot's reference point (usually its center) such that the robot does not collide with any obstacles in the environment. 
+# The robot's radius is used to determine how close the robot can get to obstacles without colliding, 
+# effectively "inflating" the obstacles by the robot's radius to create a safe navigation space for the robot's center point.
 
 # ---- ablation switches ----
 USE_CLAHE         = True  # per-image tiles differ between L and R, so this may hurt matching
+# CLAHE went under ablation test and it seems to improve results 
+# equalization helps when walls are so similar/ blank like in RoboTHOR
+# adds more contrast to the image and makes it easier for the stereo algorithm to find correspondences between the left and right images.
+# using with StereoSGBM openCV implementation 
 USE_RANSAC_GROUND = True
+# we want RANSAC ground to eventually decouple everything from ground truth data for true SLAM system
+# right now RANSAC job is to estimate the ground plane from the stereo points, 
+# which is used to compute the height of each point above the ground.
+# in a true system with no fixed angle for turning and no fixed movement point, where robot has to estimate its own position, 
+# RANSAC will estimate pitch and roll
 
-
-# ---- stereo ----
+# stereo
+# these variables are used to configure the stereo matching algorithm and the subsequent processing of the disparity map to estimate the 3D structure of the scene.
+# NUM_DISP is the number of disparity levels to consider, 
+# BLOCK is the size of the block used for matching,
+#  MIN_TEXTURE is a threshold for texture in the image, 
+# and EPSILON_D is a parameter related to disparity noise.
+# BLOCK is 7 because it is a good compromise between accuracy and speed. 
+# A larger block size can improve matching in low-texture areas but may blur fine details,
+#  while a smaller block size can capture more detail but may be more sensitive to noise.
+# NUM_DISP was increased to 96 because it allows a closer range to be captured
+#max disparity in pixels = min (f_x * baseline/MIN_RANGE, NUM_DISP -4 pixel buffer)
+# MIN_TEXTURE is 10 because it strips out almost blank walls for horizontal stereo rig
+# 
+# why is epsilon_d 0.4?
+# why is min texxture 10 mathematically?
+# why is block 7 mathematically?
+# why is num_disp 96 mathematically? empirically?
 NUM_DISP        = 96 # 64
 BLOCK           = 7
 MIN_TEXTURE     = 10.0     # window-mean |dI/dx|; tune on Train scenes, report on Val
-DISP_SIGMA_PX   = 0.4      # assumed disparity noise -> height noise sigma_h(z) = z^2/(f*b) * sigma_d
+EPSILON_D   = 0.4      # assumed disparity noise -> height noise sigma_h(z) = z^2/(f*b) * sigma_d
 
 # ---- RANSAC ground plane (no known pitch / height) ----
 RANSAC_ITERS      = 200
-RANSAC_ROW_FRAC   = 0.5    # candidates come from the lower half of the image ...
-RANSAC_MAX_Z      = 1.8    # ... and are not too far (far floor is noisy)
-RANSAC_MAX_PTS    = 2000
-RANSAC_MIN_INL    = 150
+# this is number of iterations to do ransac, number of plane hypotheses tested
+RANSAC_ROW_FRAC   = 0.5    # candidates come from the lower half of the image, because we only care about the floor plane right now
+RANSAC_MAX_Z      = 1.8    # candidates need to be relatively close to cut out noisy far points 
+RANSAC_MAX_PTS    = 2000 # need plane fitting to stay fast, it is not super difficult to estimate ground plane 
+RANSAC_MIN_INL    = 150  # minimum inlier count to accept a plane, stops from fitting a floor plane to flat surface like a table/chair
 MIN_UP            = 0.75   # floor normal must be mostly along camera-up (camera tilted down < ~40 deg).
                            # Loose design prior: it rejects wall planes, it does not give the exact pitch.
-HEIGHT_RANGE      = (0.3, 3.0)   # plausible camera height [m] for an accepted plane
+# explain trig?
+HEIGHT_RANGE      = (0.3, 3.0)   # plausible camera height [m] for an accepted plane, plane equation n p + d = 0, d is perpendicular distance from camera origin to plane/camera height
+#rejects high counters under the lens, or too far away
 PLANE_GATE_DEG    = 5.0    # camera mount is rigid -> floor plane in camera coords is constant across frames;
-PLANE_GATE_M      = 0.15   # fits are blended (EMA) if consistent, ignored if not (reset after 5 in a row)
-PLANE_EMA         = 0.3
+PLANE_GATE_M      = 0.15   # fits are blended (EMA)/exponential moving average if consistent, ignored if not (reset after 5 in a row)
+PLANE_EMA         = 0.3 #ema= exponential moving average
 
 # ---- point classification (heights above the estimated floor plane) ----
 OBS_MIN_H       = 0.12
+# object minimum height to be detected ~ 4.7 inches
+# note this assumes the floors are clear. (they are in RoboTHOR)
 OBS_MAX_H       = 1.50
+# object maximum height to be detected ~ 1.5 meters
 FLOOR_BAND_MIN  = 0.08
+# this variable 
 K_OBS, K_FLOOR  = 3.0, 2.5   # obstacle: h > K_OBS*sigma_h ; floor: |h| < K_FLOOR*sigma_h
 AREA_OBS_M2     = 0.004      # observed obstacle surface per cell (~6% of a cell) -> counts as a hit
 AREA_FLOOR_M2   = 0.006      # observed floor per cell (~10% of a cell) -> counts as seen floor
@@ -79,6 +123,8 @@ L_MAX, L_OCC, L_FREE, L_STRICT = _logit(P_CLAMP), _logit(P_OCC_THR), _logit(P_FR
 BUMP_LOCK       = 4.0    # log-odds written ONLY by a physical collision (> L_MAX, never touched by vision)
 VISIT_LOCK      = -4.0   # log-odds of cells the robot has stood on
 
+
+#occupancy grid tiles 
 ROBOT_LOCATION  = -2
 EXIT_LOCATION   = -1
 FREE_CELL       = 0
@@ -327,7 +373,7 @@ class ClassicalStereoMapper:
             self.last["n_points"] = len(pts)
             if len(pts) < 50:
                 return
-            sig = z ** 2 / self.fb * DISP_SIGMA_PX
+            sig = z ** 2 / self.fb * EPSILON_D
             plane = self.estimate_ground(pts, z, v, sig)
             if plane is None:                                       # no floor model yet -> skip, never guess
                 return
