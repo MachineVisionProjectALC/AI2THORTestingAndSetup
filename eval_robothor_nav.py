@@ -33,9 +33,7 @@ ERR_LABELS = [
 ]
 
 
-# =====================================================================
-# 1. GOAL SELECTION & SINGLE-SCENE HEADLESS RUNNER
-# =====================================================================
+# Goal selection and single scene headless runner
 def select_farthest_reachable_goal(gt_free: np.ndarray, start_rc: tuple[int, int]):
     """
     Finds the reachable grid cell in the same 4-connected component as start_rc
@@ -164,9 +162,9 @@ def run_scene(scene_name: str):
         controller.stop()
 
 
-# =====================================================================
-# 2. METRIC AGGREGATION & PDF REPORT GENERATION
-# =====================================================================
+
+#METRIC AGGREGATION & PDF REPORT GENERATION
+
 def _valid(rows, key):
     out = []
     for r in rows:
@@ -278,7 +276,7 @@ def build_pdf(rows, err_maps, out_pdf=OUT_PDF):
         pdf.savefig(fig)
         plt.close(fig)
 
-        # ---- PAGE 2: PER-SCENE METRICS TABLE ----
+        # PER-SCENE METRICS TABLE (pg2)
         fig, ax = plt.subplots(figsize=(11, 8.5))
         ax.axis("off")
         ax.set_title(
@@ -351,7 +349,7 @@ def build_pdf(rows, err_maps, out_pdf=OUT_PDF):
         pdf.savefig(fig)
         plt.close(fig)
 
-        # ---- PAGE 3: DIAGNOSTIC CHARTS (2x2) ----
+        # DIAGNOSTIC CHARTS (2x2)  (page 3)
         fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
         labels = [r["scene"].replace("FloorPlan_", "") for r in rows]
         x = np.arange(len(rows))
@@ -417,7 +415,7 @@ def build_pdf(rows, err_maps, out_pdf=OUT_PDF):
         pdf.savefig(fig)
         plt.close(fig)
 
-        # ---- PAGE 4: 3x5 FINAL ERROR-MAP GALLERY ----
+        # 3x5 FINAL ERROR-MAP GALLERY (page 4)
         fig, axes = plt.subplots(3, 5, figsize=(11, 8.5))
         cmap = ListedColormap(ERR_COLORS)
         for idx, (r, err) in enumerate(zip(rows, err_maps)):
