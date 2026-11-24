@@ -109,8 +109,9 @@ OBS_MIN_H       = 0.12
 OBS_MAX_H       = 1.50
 # object maximum height to be detected ~ 1.5 meters
 FLOOR_BAND_MIN  = 0.08
-# this variable 
+# unused
 K_OBS, K_FLOOR  = 3.0, 2.5   # obstacle: h > K_OBS*sigma_h ; floor: |h| < K_FLOOR*sigma_h
+# K_FLOOR is unused
 AREA_OBS_M2     = 0.004      # observed obstacle surface per cell (~6% of a cell) -> counts as a hit
 AREA_FLOOR_M2   = 0.006      # observed floor per cell (~10% of a cell) -> counts as seen floor
 
@@ -453,57 +454,88 @@ class ClassicalStereoMapper:
         x_l = pts[:, 0]
         return (rob_xz[0] + x_l * math.cos(a) + z_h * math.sin(a),
                 rob_xz[1] - x_l * math.sin(a) + z_h * math.cos(a))
-
-    def cell_evidence(self, grid_shape, x, zl, h, z, sig):
-        """Per-cell observed obstacle / floor SURFACE AREA in m^2 (each pixel weighs (z/f)^2, so range-invariant)."""
+    
+    def cell_evidence(self, grid_shape, x, zl, h, z, sig): # Complex function with a lot of tuned variables
+        # for each cell, did the frame see an obstacle, or did it see floor
+        # range invariant
         rows, cols = grid_shape
         w = (z / self.fx) ** 2
+        # w is the physical area one pixel covers at depth z
+        # evidence is independent of range
+        # weight by area instead of counting pixels to make far surfaces important in calculation
         obs = (h >= np.maximum(OBS_MIN_H, K_OBS * sig)) & (h <= OBS_MAX_H)
+        # height above the floor between max (0.12, 3 * sigma) and 1.5 m
+        # far floor points measured too high not trusted as an obstacle
+        # upper bound ignores high up points
+        # floor = height within -0.12 to 0.1m and z <= 1.4, only claim at close range
         flr = (h >= -0.12) & (h <= 0.10) & (z <= 1.4)
         r = np.round(HALF_GRID_CELLS - zl / GRID_SIZE).astype(int)
         c = np.round(HALF_GRID_CELLS + x / GRID_SIZE).astype(int)
+        # which cell does each point land in
         ok = (r >= 0) & (r < rows) & (c >= 0) & (c < cols)
+        #x and zl are the points metric positions in the local map frame
+        # divide by 0.25 to convert to cell units (grid_size=0.25)
+        # add half-grid_cells to shift origin to grid center
+        # rounding picks cell
+        # row has a minus bc rows increase downward in an array while forward is up on the map
+        # ok throws away anything off the occupancy grid
         idx = r * cols + c
+        # sum area per cell, idx flattens row col into one integer per point, np.bincount(indices,weights) adds up weights
+        # for every point that shares an index
+        # m is a mask so lambda is total area of masked points per cell
+        # minlength=rows*cols lets output cover every cell
+        # .reshape turns back into grid
         area = lambda m: np.bincount(idx[ok & m], w[ok & m], minlength=rows * cols).reshape(rows, cols)
         a_obs, a_flr = area(obs), area(flr)
+        # hit requires obstacle surface, and floor requires enough floor surface and almost no obstacle surface
+        # cell with chair leg in it shouldn't be declared free just because floor around it is visible
         hit = a_obs >= AREA_OBS_M2
         floor = (a_flr >= AREA_FLOOR_M2) & (a_obs < 0.5 * AREA_OBS_M2)
         return hit, floor
 
-    # ---- grid update ---------------------------------------------------
+    # update grid
     def update_grid_from_disparity(self, grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw, disp):
-        """Method-agnostic part: any disparity map (0 = invalid) -> log-odds. The RAFT side can call this directly."""
+        """Method-agnostic part: any disparity map (0 = invalid) -> log-odds. 
+        The RAFT side can call this directly."""
         with timed("mapping"):
             pts, z, v = self.points(disp)
             self.last["n_points"] = len(pts)
             if len(pts) < 50:
+                # if fewer than 50 points, skip the frame
                 return
             sig = z ** 2 / self.fb * EPSILON_D
+            # stereo error 
+
             plane = self.estimate_ground(pts, z, v, sig)
             if plane is None:                                       # no floor model yet -> skip, never guess
                 return
             n, d = plane
             h = pts @ n + d
+                        # get the plane then h = pts @ n + d
             pitch_est = math.degrees(math.atan2(-n[2], n[1]))
             self.last.update(pitch_est=pitch_est, cam_h_est=d)
 
             rob_xz = ((rob_rc[1] - HALF_GRID_CELLS) * GRID_SIZE, (HALF_GRID_CELLS - rob_rc[0]) * GRID_SIZE)
             x, zl = self.to_local(pts, pitch_est, local_yaw, rob_xz)
             hit, floor = self.cell_evidence(grid.shape, x, zl, h, z, sig)
-
+            # get robot metric position from its cell, project points to the map, and get hit / floor
+            # mutable: cells vision is not allowed to change are cells with collisions, robot cell, goal, 
+            # and cells robot drove on
             mutable = log_odds < BUMP_LOCK                          # collisions are final
             mutable[rob_rc] = mutable[exit_rc] = False
             if visited_free:
                 vr, vc = zip(*visited_free)
                 mutable[list(vr), list(vc)] = False
             log_odds[floor & mutable & (log_odds < L_OCC)] += L_FLOOR
+            #add log odds evidence
 
-# 2. In ClassicalStereoMapper.update_grid_from_disparity():
 #    pass previously confirmed obstacles so rays stop instead of erasing them
             log_odds[hit & mutable] += L_HIT
-            log_odds[floor & mutable] += L_FLOOR
+            # single hit marks cell blocked
+            log_odds[floor & mutable] += L_FLOOR # updating twice crosses the threshold P_FREE_THR
 
             log_odds[mutable] = np.clip(log_odds[mutable], -L_MAX, L_MAX)
+            # clip to L_MAX, then re threshold and update grid
             threshold_grid(grid, log_odds, visited_free, rob_rc, exit_rc)
 
     def update_grid_from_stereo(self, grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw, rgb_left, rgb_right):
@@ -511,12 +543,17 @@ class ClassicalStereoMapper:
             disp = self.compute_clean_disparity(self._prep(rgb_left), self._prep(rgb_right))
         self.update_grid_from_disparity(grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw, disp)
         return disp
+    # updates grid
 
 
 def observe_forward(controller, mapper, grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw):
     """One stereo frame in the current heading. Used after every move / turn (no 360 spin)."""
     rgb_l, rgb_r = sync_stereo_rig(controller)
     return mapper.update_grid_from_stereo(grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw, rgb_l, rgb_r)
+# look once, reposition right camera, return L and R RGB images from current pose
+# then run pipeline on that pair, disparity between images, disparity points, floor plane calc,
+# cell evidence, log odds update, re threshold 
+# returns disparity map for plot 
 
 
 def scan_all_directions_stereo(controller, mapper, grid, log_odds, visited_free, rob_rc, exit_rc, local_yaw):
@@ -527,57 +564,65 @@ def scan_all_directions_stereo(controller, mapper, grid, log_odds, visited_free,
         controller.step(action="RotateRight")
         local_yaw = (local_yaw + 90) % 360
     return disp, local_yaw
+# do a 360 degree survey, used at spawn once so the robot starts with map of all 4 directions
+# when stuck, also does 360 degree survey (move_name is None)
 
 
-# =====================================================================
-# 4. 4-WAY MANHATTAN A* WITH SOFT OBSTACLE CLEARANCE
-# =====================================================================
-def next_move(grid: np.ndarray):
+
+# A* algorithm, 4 way movement, Manhattan distance, soft obstacle clearance
+def next_move(grid: np.ndarray):  # the robot size is 1x1 so we can treat it as a point in the grid
     rows, cols = grid.shape
     robot_pts = np.argwhere(grid == ROBOT_LOCATION)
     exit_pts  = np.argwhere(grid == EXIT_LOCATION)
     if robot_pts.size == 0 or exit_pts.size == 0:
-        return None, []
+        return None, []  # we return none for no path
     start, goal = tuple(int(v) for v in robot_pts[0]), tuple(int(v) for v in exit_pts[0])
 
     # soft clearance: discourages hugging walls on a 0.25 m grid without hard-blocking 0.5 m doorways
     near_blocked = cv2.dilate((grid == BLOCKED_CELL).astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
     heuristic = lambda p: abs(p[0] - goal[0]) + abs(p[1] - goal[1])
-
-    pq = [(heuristic(start), 0.0, start)]
-    cost_to_reach, came_from = {start: 0.0}, {}
+  # heuristic is h(n) = Manhattan distance from the current cell to the exit cell
+    # heuristic can never overestimate the cost to reach the goal, so we use Manhattan distance
+    pq = [(heuristic(start), 0.0, start)]  # priority queue is a list of tuples (estimated total cost, cost to reach, coordinate)
+    cost_to_reach, came_from = {start: 0.0}, {}  # cost_to_reach is a dictionary that maps coordinates to the cost to reach that coordinate from the start coordinate
+    # came_from is a dictionary that maps coordinates to the coordinate that we came from to reach that coordinate
     while pq:
-        _, g_cost, curr = heapq.heappop(pq)
-        if curr == goal:
+        _, g_cost, curr = heapq.heappop(pq)  # pop the coordinate with the lowest estimated total cost from the priority queue
+        # the first variable is the estimated total cost, we don't need it
+        if curr == goal:  # we have reached the exit, reconstruct the path
             path = [curr]
-            while path[-1] != start:
+            while path[-1] != start:  # reconstruct the path by following the came_from dictionary from the exit to the start
                 path.append(came_from[path[-1]])
             path.reverse()
-            if len(path) < 2:
+            if len(path) < 2:  # if the path is only 1 step long, we are already at the exit, so there is no next move
                 return None, path
-            delta = (path[1][0] - start[0], path[1][1] - start[1])
+            delta = (path[1][0] - start[0], path[1][1] - start[1])  # here we calculate the delta between the first step and the start coordinate to determine the move name
+            # the name of the move is used to turn the robot in the right direction to reach the exit
             return next(k for k, v in CARDINAL_MOVES.items() if v == delta), path
-        if g_cost > cost_to_reach[curr]:
+        if g_cost > cost_to_reach[curr]:  # there exists a better path, skip this one
             continue
-        for dr, dc in CARDINAL_MOVES.values():
+        for dr, dc in CARDINAL_MOVES.values():   # calculate the neighbor coordinate by adding the delta to the current coordinate
             nb = (curr[0] + dr, curr[1] + dc)
             if not (0 <= nb[0] < rows and 0 <= nb[1] < cols) or grid[nb] == BLOCKED_CELL:
-                continue
+                continue  # check if the neighbor coordinate is within the grid bounds and not blocked
             step = 1.25 if grid[nb] == UNKNOWN_CELL else 1.0
             if near_blocked[nb] and nb != goal:
-                step += 0.90
+                step += 0.90  # calculate the cost to reach the neighbor coordinate
+            # small penalty (+0.25) is added if the neighbor cell is unknown, to encourage exploration of known free cells first
+              # additional penalty (+0.90) is added if the cell is adjacent to a blocked cell (unless it is the goal)
             if g_cost + step < cost_to_reach.get(nb, float("inf")):
+                 # if the tentative cost to reach the neighbor coordinate is less than the previously recorded cost, update the cost and path
+                 # we push the neighbor coordinate onto the priority queue with its estimated total cost and tentative cost
+                # priority queue is a min-heap, so the coordinate with the lowest estimated total cost will be popped first
                 cost_to_reach[nb] = g_cost + step
                 came_from[nb] = curr
                 heapq.heappush(pq, (g_cost + step + heuristic(nb), g_cost + step, nb))
-    return None, []
+    return None, [] # the function returns None if there is no path to the exit, and an empty list for the path
 
 
-# =====================================================================
-# 5. SELF-TRACKED MOTION EXECUTION
-# =====================================================================
+# Self Tracked Motion Execution
 def turn_toward(controller, move_name, local_yaw):
-    """One 90-degree turn toward the move direction (a 180 takes two calls, so we never turn blind twice)."""
+    #One 90-degree turn toward the move direction (a 180 takes two calls, so we never turn blind twice)
     diff = (MOVE_TO_YAW[move_name] - local_yaw) % 360
     if diff == 270:
         controller.step(action="RotateLeft");  return (local_yaw - 90) % 360
@@ -585,7 +630,7 @@ def turn_toward(controller, move_name, local_yaw):
 
 
 def execute_move(controller, move_name, grid, log_odds, rob_rc, exit_rc, local_yaw):
-    """Caller has already turned to face `move_name`."""
+    #Caller has already turned to face `move_name`
     rows, cols = grid.shape
     dr, dc = CARDINAL_MOVES[move_name]
     nr, nc = rob_rc[0] + dr, rob_rc[1] + dc
@@ -603,17 +648,18 @@ def execute_move(controller, move_name, grid, log_odds, rob_rc, exit_rc, local_y
     return False, rob_rc, local_yaw
 
 
-# =====================================================================
-# 6. EVALUATION (ground truth; evaluation + visualisation only, never seen by the navigator)
-# =====================================================================
+
+# EVALUATION (ground truth; evaluation + visualisation only, never seen by the navigator)
+
 def _to_local(spawn, x, z):
     sx, sz, yaw = spawn
     dx, dz = x - sx, z - sz
     return dx * math.cos(yaw) - dz * math.sin(yaw), dx * math.sin(yaw) + dz * math.cos(yaw)
 
-
+# Capture the ground truth
 def capture_gt(controller):
-    """gt_free[r, c]: robot centre can stand there (AI2-THOR reachable positions). Call right after spawn."""
+    #gt_free[r, c]: robot centre can stand there (AI2-THOR reachable positions)
+    #  Call right after spawn
     ag = controller.last_event.metadata["agent"]
     spawn = (ag["position"]["x"], ag["position"]["z"], math.radians(ag["rotation"]["y"]))
     reach = controller.step(action="GetReachablePositions").metadata["actionReturn"] or []
@@ -664,7 +710,8 @@ def grid_quality(grid, gt_free):
 
 
 def bfs_cells(free, start, goal):
-    """Shortest 4-connected path in cells on the GT free mask (same action space as the robot)."""
+    #Shortest 4-connected path in cells on the GT free mask (same action space as the robot)
+    # use to compare path length
     if not (free[start] and free[goal]):
         return None
     dist, q = {start: 0}, deque([start])
@@ -698,9 +745,12 @@ def score_episode(controller, gt, grid, exit_rc, moves_ok, collisions, rotations
     return out
 
 
-# =====================================================================
-# 7. LIVE PLOT: occupancy grid | grid vs ground truth | left camera | disparity
-# =====================================================================
+
+#LIVE PLOT: occupancy grid
+# grid vs ground truth
+# left camera
+#  disparity
+
 class LiveStereoPlotter:
     def __init__(self, grid, work_w, work_h, gt_free=None):
         plt.ion()
@@ -768,9 +818,12 @@ class LiveStereoPlotter:
         print(f"[plot] saved {path}")
 
 
-# =====================================================================
-# MAIN
-# =====================================================================
+
+# MAIN iterates through finding the next best move and executing
+# using our provided A* algorithm and vision algorithms
+# TODO: implement full SLAM with no ground truth pose and movement
+# requires loop closure, etc.
+
 if __name__ == "__main__":
     controller, occ_grid, log_odds, rob_rc, exit_rc, pitch_deg = init_environment()
     gt = capture_gt(controller)                      # evaluation + error panel only
