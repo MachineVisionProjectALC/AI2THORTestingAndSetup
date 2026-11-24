@@ -25,9 +25,9 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 from ai2thor.controller import Controller
 
-# =====================================================================
-# CONFIGURATION & CONSTANTS
-# =====================================================================
+# Hyperparameters/ configuration parameters / constants
+
+
 SCENE_NAME      = "FloorPlan_Train6_5"
 GRID_SIZE       = 0.25 # default grid size
 IMG_W, IMG_H    = 300, 300 # cannot handle full rendering resolution
@@ -114,10 +114,11 @@ K_OBS, K_FLOOR  = 3.0, 2.5   # obstacle: h > K_OBS*sigma_h ; floor: |h| < K_FLOO
 AREA_OBS_M2     = 0.004      # observed obstacle surface per cell (~6% of a cell) -> counts as a hit
 AREA_FLOOR_M2   = 0.006      # observed floor per cell (~10% of a cell) -> counts as seen floor
 
-# ---- Bayesian log-odds inverse sensor model (Thrun ch. 9 / OctoMap), updated once per cell per frame ----
+#Bayesian log-odds inverse sensor model (Thrun ch. 9), updated once per cell per frame 
 def _logit(p): return math.log(p / (1.0 - p))
+# use logit to represent probabilities
 P_HIT, P_FLOOR, P_RAY, P_CLAMP = 0.82, 0.36, 0.45, 0.97
-P_OCC_THR, P_FREE_THR, P_STRICT = 0.80, 0.30, 0.95   # two hits cross P_OCC_THR; one floor view crosses P_FREE_THR
+P_OCC_THR, P_FREE_THR, P_STRICT = 0.80, 0.30, 0.95   # two hits cross P_OCC_THR, one floor view crosses P_FREE_THR
 L_HIT, L_FLOOR, L_RAY = _logit(P_HIT), _logit(P_FLOOR), _logit(P_RAY)
 L_MAX, L_OCC, L_FREE, L_STRICT = _logit(P_CLAMP), _logit(P_OCC_THR), _logit(P_FREE_THR), _logit(P_STRICT)
 BUMP_LOCK       = 4.0    # log-odds written ONLY by a physical collision (> L_MAX, never touched by vision)
@@ -139,8 +140,9 @@ CARDINAL_MOVES = {
 }
 MOVE_TO_YAW = {"up": 0, "right": 90, "down": 180, "left": 270}
 
-TIMES = defaultdict(list)   # stage -> seconds per call (plain perf_counter; add torch.cuda.synchronize() on the DL side)
-
+TIMES = defaultdict(list)   # stage -> seconds per call (plain perf_counter; 
+#add torch.cuda.synchronize() on the DL side)
+# dictionary that maps stage name to list of durations in seconds, one entry for every call
 
 @contextmanager
 def timed(stage):
@@ -149,14 +151,21 @@ def timed(stage):
         yield
     finally:
         TIMES[stage].append(time.perf_counter() - t0)
+# this records how long each stage of the pipeline takes
+# this allows us to report times at the end and compare/contrast with a deep learning approach
 
 
-# =====================================================================
-# 1. HARDWARE RIG SIMULATION (STEREO CAMERA PAIR ONLY)
-# =====================================================================
+# Robot stereo 
+# Rig is our fixed arrangement of cameras: one at robot face, other 0.12m right of robot face
+# We take stereo shot from both cameras 
+# Horizontal stereo pair only
+# right camera is shifted baseline=0.12
 def sync_stereo_rig(controller: Controller, baseline: float = BASELINE):
-    """Rigid stereo pair: left = agent camera, right = third-party camera `baseline` to the right."""
     meta = controller.last_event.metadata
+    #metadata dictionary from last simulator event contains camera position,rotation, camera pitch in degrees (horizon)
+    # yaw_rad = yaw converted to radians
+    # rx and rz are right camera's world x and z
+    # event = simulator response containing both rendered images (camera 1 and 2)
     cam_pos = meta["cameraPosition"]
     agent_rot = meta["agent"]["rotation"]
     horizon = meta["agent"].get("cameraHorizon", 0.0)
@@ -164,7 +173,7 @@ def sync_stereo_rig(controller: Controller, baseline: float = BASELINE):
     yaw_rad = math.radians(agent_rot["y"])
     rx = cam_pos["x"] + baseline * math.cos(yaw_rad)
     rz = cam_pos["z"] - baseline * math.sin(yaw_rad)
-
+    # cam pos y stays the same (horizntal stereo pair)
     with timed("capture"):
         event = controller.step(
             action="UpdateThirdPartyCamera",
@@ -175,11 +184,12 @@ def sync_stereo_rig(controller: Controller, baseline: float = BASELINE):
         )
     return event.frame, event.third_party_camera_frames[0]
 
-
+#initializes the controller and camera position, not full SLAM yet (snapToGrid is true, rotatestepdegrees is fixed)
 def init_environment(render_depth=False):
     controller = Controller(
         scene=SCENE_NAME, gridSize=GRID_SIZE, snapToGrid=True, rotateStepDegrees=90,
-        renderDepthImage=render_depth,   # only for the optional depth-error check; slows the simulator
+        renderDepthImage=render_depth,  
+          # only for the optional depth-error check; slows the simulator
         width=IMG_W, height=IMG_H, fieldOfView=FOV,
     )
     controller.step(action="LookDown", degrees=LOOK_DOWN_DEG)
@@ -188,8 +198,6 @@ def init_environment(render_depth=False):
     cam_pos = meta["cameraPosition"]
     yaw_rad = math.radians(meta["agent"]["rotation"]["y"])
     horizon = meta["agent"].get("cameraHorizon", 0.0)
-    if abs(horizon - LOOK_DOWN_DEG) > 1e-3:
-        print(f"[warn] LookDown gave horizon {horizon}, asked for {LOOK_DOWN_DEG}")
 
     controller.step(
         action="AddThirdPartyCamera",
@@ -198,27 +206,36 @@ def init_environment(render_depth=False):
         rotation=dict(x=horizon, y=meta["agent"]["rotation"]["y"], z=0.0),
         fieldOfView=FOV,
     )
-
+#MAP SETUP
     size = 2 * HALF_GRID_CELLS + 1
+    # +1 is the center cell the robot is in 
     grid     = np.full((size, size), UNKNOWN_CELL, dtype=int)
+    # occupancy grid
     log_odds = np.zeros((size, size), dtype=np.float32)
+    # separate grid for log odds of ever cell in occupancy grid
     rob_rc = (HALF_GRID_CELLS, HALF_GRID_CELLS)
+    # robot row and column set to the grid center
     goal_dx, goal_dz = GOAL_OFFSET_M
+    # goal offset for testing in this file
     exit_rc = (int(np.clip(HALF_GRID_CELLS - round(goal_dz / GRID_SIZE), 1, size - 2)),
                int(np.clip(HALF_GRID_CELLS + round(goal_dx / GRID_SIZE), 1, size - 2)))
+    # exit row and column converted from offset + robot postion 
+    #np.clip keeps this inside grid 
     log_odds[rob_rc] = VISIT_LOCK
+    #start cell is a known free cell, cell has been visited so it is locked in log odds terms
     grid[exit_rc] = EXIT_LOCATION
     grid[rob_rc]  = ROBOT_LOCATION
     return controller, grid, log_odds, rob_rc, exit_rc, float(horizon)
 
-
+# converts continuous log odds into labels for the A* planner/grid
 def threshold_grid(grid, log_odds, visited_free, rob_rc, exit_rc, strict=False):
-    """Discrete planning grid from log-odds. strict=True: BLOCKED only if very confident (no-path fallback)."""
+#discrete planning grid from log-odds. strict=True: blocked only if very confident (no-path fallback).
+# prevents false blockages (orange)
     rows, cols = grid.shape
-    grid[:] = UNKNOWN_CELL
-    grid[log_odds <= L_FREE] = FREE_CELL
+    grid[:] = UNKNOWN_CELL # all Occupancy grid cells unknown at start
+    grid[log_odds <= L_FREE] = FREE_CELL # confident for free and blocked cells
     grid[log_odds >= (L_STRICT if strict else L_OCC)] = BLOCKED_CELL
-    if visited_free:
+    if visited_free: # if the robot has stood on somewhere without collision it's free
         vr, vc = zip(*[(r, c) for (r, c) in visited_free if 0 <= r < rows and 0 <= c < cols])
         grid[list(vr), list(vc)] = FREE_CELL
     grid[exit_rc] = EXIT_LOCATION
@@ -228,70 +245,127 @@ def threshold_grid(grid, log_odds, visited_free, rob_rc, exit_rc, strict=False):
 #Geometry Primitives
 
 def ransac_plane(P, sig, rng):
-    """
-    Plane n.p + d = 0 (unit n with n_y >= MIN_UP, i.e. 'up' in camera coords): height of p above it = n.p + d,
-    and d is the camera height. 3-point hypotheses, depth-aware inlier tolerance, SVD refit on the inliers.
-    Returns (n, d) or None.
-    """
-    i = rng.integers(0, len(P), (RANSAC_ITERS, 3))
+    # use RANSAC to estimate the floor plane
+    # Guess plane from 3 random points, count inliers near it, repeat and keep best guess
+    #Refit using guess's inliers
+    # using the floor plane we can then know how high 3D points are later, without ground truth height
+    #plane is n . p + d = 0, n is unit normal, d is scalar
+    # point p, n . p + d is its signed distance from the plane
+    # if n points up it's points height above the plane
+    # at camera origin height is just d (camera height)
+    # tilt of n away tells camera pitch
+    i = rng.integers(0, len(P), (RANSAC_ITERS, 3)) # generate with set seed
+    # generate 200 possible 
     nrm = np.cross(P[i[:, 1]] - P[i[:, 0]], P[i[:, 2]] - P[i[:, 0]])
+    # for each of 200 trials, take 3 random point indices
     ln = np.linalg.norm(nrm, axis=1)
+    # for each trial, take cross product (plane normal)
+    # ln is each normal's length
     nrm /= np.maximum(ln, 1e-9)[:, None]
     nrm *= np.where(nrm[:, 1] < 0, -1.0, 1.0)[:, None]
+    # makes every normal point up so the sign of n . p + d means above or below
     off = -np.einsum("ij,ij->i", nrm, P[i[:, 0]])
+    # solves for d = -np, n.p + d = 0
     tol = 0.02 + 0.5 * sig
-    dist = np.abs(P @ nrm.T + off)                                           # (N, iters)
+    # inlier tolerance per point is 2cm baseline plus 1/2 expected noise of the point
+    # this allows far away points with larger values of expected noise to be farther from plane and still count
+    dist = np.abs(P @ nrm.T + off)                                           # (N, iters) every point against every candidate plane
     score = (dist < tol[:, None]).sum(0) * ((ln > 1e-6) & (nrm[:, 1] >= MIN_UP))
+    # marks inliers per point per hypothesis then counts them per hypothetical plane, also zero bad hypothesis with small length or tilted too much
     k = int(np.argmax(score))
+    # pick best hypothetical plane if we can
     if score[k] < RANSAC_MIN_INL:
         return None
-    inl = P[dist[:, k] < tol]
-    ctr = inl.mean(0)
-    n = np.linalg.svd(inl - ctr, full_matrices=False)[2][-1]
-    n = n if n[1] >= 0 else -n
-    d = float(-n @ ctr)
+    inl = P[dist[:, k] < tol] # refit using all the plane's inliers
+    ctr = inl.mean(0) # subtract the centroid
+    n = np.linalg.svd(inl - ctr, full_matrices=False)[2][-1] # take SVD, right singular vector with smallest singular value is plane normal
+    # this is best fit 
+    n = n if n[1] >= 0 else -n # re orient upward
+    d = float(-n @ ctr) # plane passes thru centroid
     ok = n[1] >= MIN_UP and HEIGHT_RANGE[0] <= d <= HEIGHT_RANGE[1]
+    # sanity check if angle is floor like and camera height is valid
     return (n, d) if ok else None
 
 
-# =====================================================================
-# 3. CLASSICAL VISION: SGBM + RANSAC GROUND + AREA-WEIGHTED EVIDENCE 
-# =====================================================================
+# Main Pipeline for Classical Vision using StereoSGBM, RANSAC for ground plane, CLAHE
+
 class ClassicalStereoMapper:
     def __init__(self, src_w: int, src_h: int, pitch_deg=None, fov=FOV, baseline=BASELINE, seed=0):
         """pitch_deg is used ONLY if USE_RANSAC_GROUND is False (oracle plane)."""
+        # right now we use the RANSAC plane and will in the future so this is deprecated  can be remvoed
         self.H, self.W = src_h, src_w
         self.baseline = baseline
         self.oracle_pitch = pitch_deg
         self.fy = (self.H / 2.0) / math.tan(math.radians(fov) / 2.0)
+        # focal length in pixels
         self.fx = self.fy
+        # fx = fy because the pixels are square
         self.cx, self.cy = self.W / 2.0, self.H / 2.0
+        # image center = principal point
         self.fb = self.fx * baseline
+        # focal length times baseline, converts pixel disparity into depth
+        # point at depth z appears in different columns in L and R images, col difference is disparity d
+        # d = f * b / z --> z = fb/d
         self.d_lo, self.d_hi = self.fb / MAX_RANGE, min(self.fb / MIN_RANGE, NUM_DISP - 4)
-        self.rng = np.random.default_rng(seed)
-        self.plane, self.bad_fits = None, 0
+        # disparity limits to search with SGBM
+        self.rng = np.random.default_rng(seed) # allows us to reproduce RANSAC with set seed
+        self.plane, self.bad_fits = None, 0 # smoothed floor plane 
         self.last = {}                                    # diagnostics of the last frame (shown in the plot title)
 
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        # run CLAHE algorithm, brings out texture in low contrast regions like blank walls
+        #allows sgbm to find more reliable matches
+        # we tested this with ablation and it improved significantly results
+        # divide image into tiles
+        # analyze each tile's histogram
+        #capping contrast. here we use a value of 2 which works for natural images
+        # image divided into 64 tiles
         self.sgbm = cv2.StereoSGBM_create(
             minDisparity=0, numDisparities=NUM_DISP, blockSize=BLOCK,
             P1=8 * 3 * BLOCK ** 2, P2=32 * 3 * BLOCK ** 2,
             disp12MaxDiff=1, uniquenessRatio=15, speckleWindowSize=100, speckleRange=1,
             mode=cv2.STEREO_SGBM_MODE_HH,
-)
+        )
+        # Semi Global Matching (with Block)
+        #StereoSGBM is OpenCV's implementation of Hirschmüller's original SGM algorithm
+        #The original algorithm uses pixel-wise aggregation cost, 
+        # while StereoSGBM allows matching blocks. If the block size is set to 1,
+        #  it's the same as working on pixels
+        # here we use a block size greater than 1
+        #https://docs.opencv.org/3.4.1/d2/d85/classcv_1_1StereoSGBM.html
+        # mindisparity=0 - minimum possible horizontal pixel shift is 0
+        # numdisparities = NUM_DISP, positive and divisible by 16, tune this
+        # blocksize= block- square mathcing window for SGBM, odd number typically 3 to 11
+        # P1 is penalty applied when neighboring pixel disparity changes by +=1 pixel
+        #P2 is penalty applied when disparity jumps by more than 1 pixel 
+        # disp12MaxDiff is the max allowed distance in integer pixels in the left right consistency check
+        # SGBM computes disparity L to R and R to L, they have to agree by +- 1 pixel
+        #uniquenessRatio	Margin in percentage by which the best (minimum) computed cost function value should "win" the second best value to consider the found match correct. Normally, a value within the 5-15 range is good enough.
+        #speckleWindowSize	Maximum size of smooth disparity regions to consider their noise speckles and invalidate. Set it to 0 to disable speckle filtering. Otherwise, set it somewhere in the 50-200 range.
+        #speckleRange	Maximum disparity variation within each connected component. If you do speckle filtering, set the parameter to a positive value, it will be implicitly multiplied by 16. Normally, 1 or 2 is good enough.
+        # 3 channel RGB input image
 
-    @classmethod
+
+
+    @classmethod # reads height and width from image
     def from_frame(cls, frame: np.ndarray, **kw):
         h, w = frame.shape[:2]
         return cls(src_w=w, src_h=h, **kw)
 
-    # ---- disparity -----------------------------------------------------
+    # disparity
+    # converts RGB to LAB (luminance, and a and b channels, a is green red and b is blue yellow)
+    # https://stackoverflow.com/questions/25008458/how-to-apply-clahe-on-rgb-color-images
+
     def _prep(self, rgb):
         lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
         if USE_CLAHE:
             lab[:, :, 0] = self.clahe.apply(lab[:, :, 0])
         return lab
+    # allows for CLAHE to work better, split brightness from color
 
+    #
+    # can't match the first NUM_DISP columns since pixel at column x looks at col x-d in right image
+    
     def compute_clean_disparity(self, img_l, img_r):
         # OpenCV leaves the left NUM_DISP columns of the left-referenced map invalid; padding recovers them
         # (far points at the left edge have small disparity and match fine).
@@ -299,40 +373,70 @@ class ClassicalStereoMapper:
         L = cv2.copyMakeBorder(img_l, 0, 0, pad, 0, cv2.BORDER_REPLICATE)
         R = cv2.copyMakeBorder(img_r, 0, 0, pad, 0, cv2.BORDER_REPLICATE)
         d = self.sgbm.compute(L, R)[:, pad:].astype(np.float32) / 16.0
+        # we divide by 16 since SGBM returns fixed point disparity with 4 fractional bits
         # a horizontal baseline only constrains horizontal gradients -> gate on window-mean |dI/dx|
         gx = np.abs(cv2.Sobel(img_l, cv2.CV_32F, 1, 0, ksize=3)).max(axis=2)
+        # dispairty code gates on horizontal gradients, not vertical ones
+        # this code means: 
+        # horizontal baseline matches features along rows only
+        # .max(axis=2) takes the strongest channel, boxFilter averages over 7x7 window
+        #blank wall regions dont have a horizontal gradient so they get rejected
+        # then we keep pixel if disparity is within the disparity range and texture exists
+        #https://docs.opencv.org/4.13.0/d4/d86/group__imgproc__filter.html
         tex = cv2.boxFilter(gx, -1, (BLOCK, BLOCK))
         ok = (d >= self.d_lo) & (d <= self.d_hi) & (tex >= MIN_TEXTURE)
         return np.where(ok, d, 0.0).astype(np.float32)
 
-    # ---- geometry ------------------------------------------------------
+    # geometry, back projection
+    # calculate camera coordinates, X, Y, Z relative to camera
+    #z = fb/d, d is disparity, fb = 18
+    # d=18 is at 1m, d=9 is at 2m
+    # u and v are pinhole camera model, projecting 3d point
+    #u-cx is pixels point is to right of image center, negative = left of center
+    #/fx converts pixels to a ratio
+    # multiply by z to scale angle by distance to get meters
     def points(self, disp):
         v, u = np.nonzero(disp > 0)
         z = self.fb / disp[v, u].astype(np.float64)
         k = (z >= MIN_RANGE) & (z <= MAX_RANGE)
+        # filter points by min range and max range
         u, v, z = u[k], v[k], z[k]
         pts = np.stack([(u - self.cx) * z / self.fx, -(v - self.cy) * z / self.fy, z], axis=1)  # x right, y up, z fwd
         return pts, z, v
+    # return z and pixel row v, need row for RANSAC to restrict to lower half of image for floor plane
 
     def estimate_ground(self, pts, z, v, sig):
-        """(n, d) of the floor in camera coords. Fits are blended over time because the mount is rigid."""
+        #z is depth of each point in meters
+        #v is image row of each point
+        #sig is estimated depth noise per point in meters
+        #Output:
+        # n is the floor plane unit normal
+        # d is the plane offset/camera height above floor in meters
         if not USE_RANSAC_GROUND:                                   # oracle: known pitch + known height
             p = math.radians(self.oracle_pitch)
             return np.array([0.0, math.cos(p), -math.sin(p)]), CAMERA_HEIGHT
         cand = np.flatnonzero((v >= RANSAC_ROW_FRAC * self.H) & (z <= RANSAC_MAX_Z))
+        # cand are points in lower half of image and within 1.8m
+        # subsample to 2000 points
         fit = None
         if len(cand) >= RANSAC_MIN_INL:
             if len(cand) > RANSAC_MAX_PTS:
                 cand = self.rng.choice(cand, RANSAC_MAX_PTS, replace=False)
             fit = ransac_plane(pts[cand], sig[cand], self.rng)
+            # fit with ransac plane
         self.last["ransac_ok"] = fit is not None
         if fit is not None:
             if self.plane is None:
                 self.plane = fit
+                # accept first fit as is
             else:
+                # ignore inconsistent fits, but after 5 in a row replace the plane
+                # prevents first one from being wrong one
+            
                 n0, d0 = self.plane
                 ang = math.degrees(math.acos(float(np.clip(fit[0] @ n0, -1, 1))))
                 if ang < PLANE_GATE_DEG and abs(fit[1] - d0) < PLANE_GATE_M:
+                    
                     n1 = (1 - PLANE_EMA) * n0 + PLANE_EMA * fit[0]
                     self.plane, self.bad_fits = (n1 / np.linalg.norm(n1), (1 - PLANE_EMA) * d0 + PLANE_EMA * fit[1]), 0
                 else:
@@ -340,10 +444,11 @@ class ClassicalStereoMapper:
                     if self.bad_fits >= 5:
                         self.plane, self.bad_fits = fit, 0
         return self.plane                                           # None until the first successful fit
-
+    # camera frame to map frame
+    # undo downward tilt, then use R and t (rotate / translate) into self tracked local world frame
     def to_local(self, pts, pitch_deg, yaw_deg, rob_xz):
-        """Undo the downward pitch, then rotate/translate into the self-tracked local world frame."""
         p, a = math.radians(pitch_deg), math.radians(yaw_deg)
+        # pitch and yaw
         z_h = pts[:, 1] * math.sin(p) + pts[:, 2] * math.cos(p)
         x_l = pts[:, 0]
         return (rob_xz[0] + x_l * math.cos(a) + z_h * math.sin(a),
