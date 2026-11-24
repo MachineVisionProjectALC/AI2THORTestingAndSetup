@@ -1,0 +1,42 @@
+name: stereo-navigation
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Core Python environment
+  - python=3.10
+  - pip
+
+  # Core numerical and scientific computing
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+
+  # Computer vision and visualization
+  - opencv
+  - matplotlib
+
+  # System and experiment monitoring
+  - psutil
+  - pynvml
+  - nvidia-ml-py
+
+  # Useful development tools
+  - ipython
+  - jupyter
+  - tqdm
+
+  # Packages installed through pip
+  - pip:
+      # AI2-THOR simulator used by box_room.py and GroundTruthBaseline.py
+      - ai2thor
+
+      # Deep-learning stereo (DeepStereoMapper uses torchvision's RAFT-Stereo)
+      - torch
+      - torchvision
+
+      # Optional experiment tracking
+      - wandb

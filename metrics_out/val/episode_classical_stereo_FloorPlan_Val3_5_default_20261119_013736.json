@@ -1,0 +1,305 @@
+{
+  "meta": {
+    "method": "classical_stereo",
+    "scene": "FloorPlan_Val3_5",
+    "grid_size": 0.25,
+    "episode_id": "FloorPlan_Val3_5_default",
+    "split": "val",
+    "source": "scene_default",
+    "start_yaw_snapped": null,
+    "goal_selection": "farthest_euclid",
+    "goal_info": {
+      "euclid_m": 5.814851674806504,
+      "geodesic_m": 6.743356574925579,
+      "ratio": 1.1596781744480131,
+      "n_candidates": 288
+    },
+    "max_steps": 300,
+    "goal_local_m": [
+      5.25,
+      2.5
+    ],
+    "goal_world": [
+      1.250019308074478,
+      0.9009992480278015,
+      -4.250040546553039
+    ],
+    "timestamp": "2026-11-19T01:37:36",
+    "hardware": {
+      "cpu_cores_logical": 16
+    }
+  },
+  "navigation": {
+    "success": true,
+    "termination": "goal",
+    "nav_steps": 34,
+    "moves_attempted": 34,
+    "moves_ok": 33,
+    "collisions": 1,
+    "collision_rate": 0.029411764705882353,
+    "no_path_events": 0,
+    "replan_retries": 0,
+    "rotations": 139,
+    "path_length_m": 8.25,
+    "first_plan_length_m": 7.75,
+    "sim_actions": {
+      "RotateRight": 136,
+      "UpdateThirdPartyCamera": 132,
+      "MoveAhead": 34,
+      "RotateLeft": 3
+    },
+    "collision_log": [
+      {
+        "step": 27,
+        "move": "right",
+        "error": "Box_3cd2d72c is blocking Agent 0 from moving by (-0.2500, 0.0000, 0.0000)."
+      }
+    ],
+    "success_gt": true,
+    "final_goal_dist_gt_m": 4.4909071504101976e-05,
+    "path_length_gt_m": 8.25,
+    "optimal_path_m": 8.25,
+    "optimal_path_source": "ground_truth_astar",
+    "ai2thor_shortest_path_m": 6.743347912671877,
+    "ground_truth_astar_m": 8.25,
+    "start_goal_euclid_m": 5.814851674806504,
+    "path_efficiency": 1.0,
+    "spl": 1.0,
+    "pose_error_m": 0.0
+  },
+  "timing": {
+    "total_wall_s": 11.38133198100013,
+    "per_step_wall_ms": {
+      "n": 34,
+      "mean": 334.7450582647097,
+      "median": 336.07534999987365,
+      "p95": 426.787985649912,
+      "min": 25.886041999910958,
+      "max": 496.9802730001902,
+      "std": 72.78222701302863
+    },
+    "per_step_compute_ms": {
+      "n": 34,
+      "mean": 202.89968797054397,
+      "median": 207.0069989995318,
+      "p95": 269.4498989000522,
+      "min": 0.23793999980625813,
+      "max": 315.70040899941887,
+      "std": 51.07816722958298
+    },
+    "per_step_sim_ms": {
+      "n": 34,
+      "mean": 69.31171805874382,
+      "median": 65.23329149990786,
+      "p95": 99.93037639978863,
+      "min": 25.444105999667954,
+      "max": 111.98098999966533,
+      "std": 14.64058033013835
+    },
+    "per_step_plot_ms": {
+      "n": 34,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "total_compute_s": 6.898589390998495,
+    "total_sim_s": 2.3565984139972898,
+    "total_plot_s": 0.0,
+    "compute_stages": [
+      "mapping",
+      "planning"
+    ],
+    "per_call_ms": {
+      "sim_step": {
+        "n": 305,
+        "mean": 14.616610763947453,
+        "median": 13.607018000129756,
+        "p95": 19.703847000346286,
+        "min": 8.31267499961541,
+        "max": 63.012282000272535,
+        "std": 5.765074484802205
+      },
+      "stereo_capture": {
+        "n": 132,
+        "mean": 13.290051583326065,
+        "median": 12.37084750005124,
+        "p95": 16.01876509998873,
+        "min": 8.336761000009574,
+        "max": 62.24552000003314,
+        "std": 5.790238494364108
+      },
+      "disparity": {
+        "n": 132,
+        "mean": 27.007286098468644,
+        "median": 26.094231500110254,
+        "p95": 32.40077329987797,
+        "min": 22.178775000156747,
+        "max": 77.19461900023816,
+        "std": 5.377050528908624
+      },
+      "sift_match": {
+        "n": 132,
+        "mean": 19.46957633334257,
+        "median": 12.522976000127528,
+        "p95": 72.39142899993567,
+        "min": 11.605277999933605,
+        "max": 85.67697600028623,
+        "std": 17.790922244208012
+      },
+      "mapping": {
+        "n": 132,
+        "mean": 52.176881840902446,
+        "median": 43.25522249973801,
+        "p95": 100.03844925008707,
+        "min": 36.4217970000027,
+        "max": 119.17045899963341,
+        "std": 19.36755668669465
+      },
+      "scan_total": {
+        "n": 33,
+        "mean": 326.1270999999838,
+        "median": 319.59150599959685,
+        "p95": 407.89387599998,
+        "min": 268.95006199993077,
+        "max": 479.31679599969357,
+        "std": 49.40294815665336
+      },
+      "planning": {
+        "n": 34,
+        "mean": 0.33061729409917673,
+        "median": 0.222625999867887,
+        "p95": 0.8520156501163,
+        "min": 0.12945500020578038,
+        "max": 1.0731709999163286,
+        "std": 0.23023954830992627
+      },
+      "execute_move": {
+        "n": 34,
+        "mean": 17.715047205830857,
+        "median": 16.35024150004938,
+        "p95": 27.284964649766152,
+        "min": 12.729636999665672,
+        "max": 29.32220699995014,
+        "std": 4.604283974633884
+      }
+    },
+    "compute_fraction_of_wall": 0.6061319889899464
+  },
+  "resources": {
+    "cpu_py_pct": {
+      "n": 56,
+      "mean": 633.8571428571429,
+      "median": 593.8,
+      "p95": 853.875,
+      "min": 418.3,
+      "max": 879.9,
+      "std": 128.01163431660484
+    },
+    "cpu_sim_pct": {
+      "n": 56,
+      "mean": 45.73035714285714,
+      "median": 45.1,
+      "p95": 59.525,
+      "min": 24.9,
+      "max": 155.6,
+      "std": 17.112317197634248
+    },
+    "cpu_sys_pct": {
+      "n": 56,
+      "mean": 43.621428571428574,
+      "median": 41.45,
+      "p95": 55.275,
+      "min": 26.6,
+      "max": 60.4,
+      "std": 7.735648331073538
+    },
+    "rss_py_mb": {
+      "n": 56,
+      "mean": 256.91748046875,
+      "median": 256.765625,
+      "p95": 257.2568359375,
+      "min": 256.75,
+      "max": 257.27734375,
+      "std": 0.19897386047596796
+    },
+    "rss_sim_mb": {
+      "n": 56,
+      "mean": 427.03243582589283,
+      "median": 427.033203125,
+      "p95": 427.08203125,
+      "min": 426.7421875,
+      "max": 427.3828125,
+      "std": 0.09470691312581807
+    },
+    "gpu_util_pct": null,
+    "gpu_mem_used_mb": null,
+    "gpu_mem_proc_mb": null,
+    "gpu_power_w": null,
+    "cpu_power_w": null,
+    "idle_mean": {
+      "cpu_py_pct": 5.2,
+      "cpu_sim_pct": 0.0,
+      "cpu_sys_pct": 4.16,
+      "rss_py_mb": 164.6709375,
+      "rss_sim_mb": 424.79703125,
+      "gpu_util_pct": null,
+      "gpu_mem_used_mb": null,
+      "gpu_mem_proc_mb": null,
+      "gpu_power_w": null,
+      "cpu_power_w": null
+    },
+    "n_samples": 56,
+    "sample_interval_s": 0.2,
+    "gpu_energy_j": null,
+    "gpu_energy_net_j": null,
+    "cpu_energy_j": null,
+    "cpu_energy_net_j": null,
+    "total_energy_j": null,
+    "energy_per_m_j": null,
+    "energy_per_step_j": null,
+    "note": "gpu_* includes the Unity renderer; compare against cpu_py/rss_py/gpu_mem_proc for the algorithm's own footprint"
+  },
+  "vision": {
+    "frames": 132,
+    "disp_density": {
+      "n": 132,
+      "mean": 0.2262246632996633,
+      "median": 0.22052222222222223,
+      "p95": 0.31786888888888887,
+      "min": 0.15644444444444444,
+      "max": 0.3358555555555556,
+      "std": 0.04460922243202925
+    },
+    "sift_matches": {
+      "n": 132,
+      "mean": 16.424242424242426,
+      "median": 8.5,
+      "p95": 44.349999999999966,
+      "min": 0.0,
+      "max": 210.0,
+      "std": 29.655885309951344
+    },
+    "depth_coverage": null,
+    "depth_mae_m": null,
+    "depth_rmse_m": null,
+    "depth_absrel": null,
+    "depth_delta1": null,
+    "disp_bad1": null
+  },
+  "map": {
+    "final": {
+      "n_free": 261,
+      "n_blocked": 118,
+      "free_precision": 0.8390804597701149,
+      "false_free_cells": 42,
+      "phantom_obstacle_cells": 0,
+      "phantom_obstacle_rate": 0.0,
+      "reachable_coverage": 0.7604166666666666
+    },
+    "max_phantom_obstacle_cells": 0,
+    "max_false_free_cells": 47
+  }
+}

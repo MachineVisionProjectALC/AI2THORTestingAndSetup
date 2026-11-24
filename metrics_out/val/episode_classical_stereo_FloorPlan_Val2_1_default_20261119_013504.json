@@ -1,0 +1,310 @@
+{
+  "meta": {
+    "method": "classical_stereo",
+    "scene": "FloorPlan_Val2_1",
+    "grid_size": 0.25,
+    "episode_id": "FloorPlan_Val2_1_default",
+    "split": "val",
+    "source": "scene_default",
+    "start_yaw_snapped": null,
+    "goal_selection": "farthest_euclid",
+    "goal_info": {
+      "euclid_m": 6.388466169590318,
+      "geodesic_m": 6.853913150178208,
+      "ratio": 1.0728573914664306,
+      "n_candidates": 218
+    },
+    "max_steps": 300,
+    "goal_local_m": [
+      3.25,
+      5.5
+    ],
+    "goal_world": [
+      2.249974034354908,
+      0.9009992480278015,
+      -1.2500439422617151
+    ],
+    "timestamp": "2026-11-19T01:35:04",
+    "hardware": {
+      "cpu_cores_logical": 16
+    }
+  },
+  "navigation": {
+    "success": true,
+    "termination": "goal",
+    "nav_steps": 37,
+    "moves_attempted": 37,
+    "moves_ok": 35,
+    "collisions": 2,
+    "collision_rate": 0.05405405405405406,
+    "no_path_events": 0,
+    "replan_retries": 0,
+    "rotations": 153,
+    "path_length_m": 8.75,
+    "first_plan_length_m": 8.75,
+    "sim_actions": {
+      "RotateRight": 147,
+      "UpdateThirdPartyCamera": 140,
+      "MoveAhead": 37,
+      "RotateLeft": 6
+    },
+    "collision_log": [
+      {
+        "step": 13,
+        "move": "up",
+        "error": "Box_dcd3fd7d is blocking Agent 0 from moving by (-0.2500, 0.0000, 0.0000)."
+      },
+      {
+        "step": 16,
+        "move": "up",
+        "error": "Box_dcd3fd7d is blocking Agent 0 from moving by (-0.2500, 0.0000, 0.0000)."
+      }
+    ],
+    "success_gt": true,
+    "final_goal_dist_gt_m": 5.104054358717553e-05,
+    "path_length_gt_m": 8.75,
+    "optimal_path_m": 8.75,
+    "optimal_path_source": "ground_truth_astar",
+    "ai2thor_shortest_path_m": 6.853894408277661,
+    "ground_truth_astar_m": 8.75,
+    "start_goal_euclid_m": 6.388466169590319,
+    "path_efficiency": 1.0,
+    "spl": 1.0,
+    "pose_error_m": 0.0
+  },
+  "timing": {
+    "total_wall_s": 12.156084044999716,
+    "per_step_wall_ms": {
+      "n": 37,
+      "mean": 328.54281202701935,
+      "median": 327.83922899989193,
+      "p95": 434.6118638000007,
+      "min": 24.31426700013617,
+      "max": 447.9711280000629,
+      "std": 86.39469072743269
+    },
+    "per_step_compute_ms": {
+      "n": 37,
+      "mean": 204.27226724319013,
+      "median": 199.1481690006367,
+      "p95": 289.7198253996976,
+      "min": 0.40825299993230146,
+      "max": 313.5126089996447,
+      "std": 63.92033706449423
+    },
+    "per_step_sim_ms": {
+      "n": 37,
+      "mean": 66.63111921624157,
+      "median": 64.39655400026822,
+      "p95": 98.37688779971359,
+      "min": 23.715533000085998,
+      "max": 102.52265500002977,
+      "std": 15.55197377100791
+    },
+    "per_step_plot_ms": {
+      "n": 37,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "std": 0.0
+    },
+    "total_compute_s": 7.5580738879980345,
+    "total_sim_s": 2.4653514110009382,
+    "total_plot_s": 0.0,
+    "compute_stages": [
+      "mapping",
+      "planning"
+    ],
+    "per_call_ms": {
+      "sim_step": {
+        "n": 330,
+        "mean": 13.851595075771966,
+        "median": 13.00651150017984,
+        "p95": 19.226205350037162,
+        "min": 8.591103000071598,
+        "max": 49.64554899970608,
+        "std": 4.65655059795925
+      },
+      "stereo_capture": {
+        "n": 140,
+        "mean": 12.56110152857478,
+        "median": 11.444063499993717,
+        "p95": 15.388257100107666,
+        "min": 8.610500000031607,
+        "max": 49.66841299983571,
+        "std": 6.129889735605846
+      },
+      "disparity": {
+        "n": 140,
+        "mean": 27.375698707178994,
+        "median": 27.269927499901314,
+        "p95": 32.345999850258515,
+        "min": 22.258155000145052,
+        "max": 38.01312899986442,
+        "std": 3.036046090266798
+      },
+      "sift_match": {
+        "n": 140,
+        "mean": 21.84312907142417,
+        "median": 12.62890149996565,
+        "p95": 74.67144769987044,
+        "min": 11.76002200008952,
+        "max": 95.24676199998794,
+        "std": 20.464871738507078
+      },
+      "mapping": {
+        "n": 140,
+        "mean": 53.848453092830695,
+        "median": 43.36064600011014,
+        "p95": 104.92911419969457,
+        "min": 35.83194900011222,
+        "max": 126.17973800024629,
+        "std": 21.742885226207683
+      },
+      "scan_total": {
+        "n": 35,
+        "mean": 326.3880225428563,
+        "median": 315.11402000023736,
+        "p95": 419.4452285000807,
+        "min": 268.4320309999748,
+        "max": 429.85956300026373,
+        "std": 47.968959755506226
+      },
+      "planning": {
+        "n": 37,
+        "mean": 0.5213636486956061,
+        "median": 0.3840469998976914,
+        "p95": 1.4314993999505532,
+        "min": 0.13247100014268653,
+        "max": 1.4596330001950264,
+        "std": 0.40819985447153373
+      },
+      "execute_move": {
+        "n": 37,
+        "mean": 19.102626945958626,
+        "median": 16.76729000018895,
+        "p95": 28.111030799936994,
+        "min": 12.463913999908982,
+        "max": 29.645408999840583,
+        "std": 5.447992653477667
+      }
+    },
+    "compute_fraction_of_wall": 0.6217523554476388
+  },
+  "resources": {
+    "cpu_py_pct": {
+      "n": 60,
+      "mean": 642.2183333333334,
+      "median": 593.55,
+      "p95": 895.2249999999999,
+      "min": 410.0,
+      "max": 1060.1,
+      "std": 152.67064277027487
+    },
+    "cpu_sim_pct": {
+      "n": 60,
+      "mean": 44.23833333333334,
+      "median": 45.05,
+      "p95": 56.26499999999999,
+      "min": 20.0,
+      "max": 79.5,
+      "std": 9.464338181945012
+    },
+    "cpu_sys_pct": {
+      "n": 60,
+      "mean": 44.093333333333334,
+      "median": 41.2,
+      "p95": 58.26999999999998,
+      "min": 30.9,
+      "max": 65.3,
+      "std": 8.348789666106631
+    },
+    "rss_py_mb": {
+      "n": 60,
+      "mean": 245.96119791666666,
+      "median": 245.91796875,
+      "p95": 246.296875,
+      "min": 245.90625,
+      "max": 246.296875,
+      "std": 0.12209112669770876
+    },
+    "rss_sim_mb": {
+      "n": 60,
+      "mean": 424.16510416666665,
+      "median": 424.96484375,
+      "p95": 425.04296875,
+      "min": 422.53125,
+      "max": 425.23046875,
+      "std": 1.0773899372451785
+    },
+    "gpu_util_pct": null,
+    "gpu_mem_used_mb": null,
+    "gpu_mem_proc_mb": null,
+    "gpu_power_w": null,
+    "cpu_power_w": null,
+    "idle_mean": {
+      "cpu_py_pct": 5.2,
+      "cpu_sim_pct": 0.0,
+      "cpu_sys_pct": 4.16,
+      "rss_py_mb": 164.6709375,
+      "rss_sim_mb": 424.79703125,
+      "gpu_util_pct": null,
+      "gpu_mem_used_mb": null,
+      "gpu_mem_proc_mb": null,
+      "gpu_power_w": null,
+      "cpu_power_w": null
+    },
+    "n_samples": 60,
+    "sample_interval_s": 0.2,
+    "gpu_energy_j": null,
+    "gpu_energy_net_j": null,
+    "cpu_energy_j": null,
+    "cpu_energy_net_j": null,
+    "total_energy_j": null,
+    "energy_per_m_j": null,
+    "energy_per_step_j": null,
+    "note": "gpu_* includes the Unity renderer; compare against cpu_py/rss_py/gpu_mem_proc for the algorithm's own footprint"
+  },
+  "vision": {
+    "frames": 140,
+    "disp_density": {
+      "n": 140,
+      "mean": 0.24251674603174606,
+      "median": 0.22704444444444444,
+      "p95": 0.35860333333333333,
+      "min": 0.16252222222222223,
+      "max": 0.3655888888888889,
+      "std": 0.04903560960866988
+    },
+    "sift_matches": {
+      "n": 140,
+      "mean": 23.978571428571428,
+      "median": 16.0,
+      "p95": 75.09999999999997,
+      "min": 0.0,
+      "max": 127.0,
+      "std": 24.604432776329105
+    },
+    "depth_coverage": null,
+    "depth_mae_m": null,
+    "depth_rmse_m": null,
+    "depth_absrel": null,
+    "depth_delta1": null,
+    "disp_bad1": null
+  },
+  "map": {
+    "final": {
+      "n_free": 220,
+      "n_blocked": 151,
+      "free_precision": 0.6772727272727272,
+      "false_free_cells": 71,
+      "phantom_obstacle_cells": 0,
+      "phantom_obstacle_rate": 0.0,
+      "reachable_coverage": 0.6834862385321101
+    },
+    "max_phantom_obstacle_cells": 0,
+    "max_false_free_cells": 71
+  }
+}

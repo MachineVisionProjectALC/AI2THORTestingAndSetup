@@ -1,0 +1,18 @@
+{
+  "classical_stereo": {
+    "episodes": 15,
+    "success_rate": 1.0,
+    "success_rate_gt": 1.0,
+    "avg_successful_path_m": 8.6,
+    "mean_spl": 0.9291955223978817,
+    "mean_collisions": 0.6666666666666666,
+    "mean_compute_ms_per_step": 207.18085787396654,
+    "mean_cpu_py_pct": 637.0050658589399,
+    "peak_rss_py_mb": 257.27734375,
+    "mean_gpu_util_pct": null,
+    "mean_gpu_power_w": null,
+    "mean_energy_j": null,
+    "mean_depth_absrel": null,
+    "mean_phantom_obstacles": 0.06666666666666667
+  }
+}
