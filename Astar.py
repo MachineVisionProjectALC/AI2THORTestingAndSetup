@@ -1,11 +1,12 @@
 import heapq
 import math
+import cv2
 import numpy as np
 
 ROBOT_LOCATION = -2 # for the occupancy grid we have unique grid squares as robot and exit
 EXIT_LOCATION = -1
 FREE_CELL = 0 # free cells factor into the A* path
-BLOCKED_CELL = 1 
+BLOCKED_CELL = 1
 UNKNOWN_CELL = 2
 
 CARDINAL_MOVES = {
@@ -16,7 +17,7 @@ CARDINAL_MOVES = {
 }
 
 MOVE_TO_YAW = { # move to yaw mapping for the robot to turn in the right direction
-    #this doesnt consider vertical movement its with respect to 2d grid
+    # this doesnt consider vertical movement its with respect to 2d grid
     "up": 0,
     "right": 90,
     "down": 180,
@@ -24,97 +25,86 @@ MOVE_TO_YAW = { # move to yaw mapping for the robot to turn in the right directi
 } # here this dictionary is not used
 
 
-#A* Pathfinding algorithm to find the next move for the robot to reach the exit in a grid
-#The grid takes into account the robot size already. This is done using binary dilation python library
-#So we can assume the robot is a point in the grid and can move to any free cell
+# =====================================================================
+# 4. 4-WAY MANHATTAN A* WITH SOFT OBSTACLE CLEARANCE
+# =====================================================================
+# A* Pathfinding algorithm to find the next move for the robot to reach the exit in a grid
+# The grid takes into account the robot size already. This is done using binary dilation python library
+# So we can assume the robot is a point in the grid and can move to any free cell
 
 def next_move(grid: np.ndarray):
-    #the robot size is 1x1 so we can treat it as a point in the grid
+    # the robot size is 1x1 so we can treat it as a point in the grid
     rows, cols = grid.shape
-    robot_indices = np.argwhere(grid == ROBOT_LOCATION)
-    exit_indices = np.argwhere(grid == EXIT_LOCATION)
+    robot_pts = np.argwhere(grid == ROBOT_LOCATION)
+    exit_pts  = np.argwhere(grid == EXIT_LOCATION)
 
-    if (robot_indices.size == 0 or exit_indices.size == 0):
+    if robot_pts.size == 0 or exit_pts.size == 0:
         return None, [] # we return none for no path
 
-    start_coord = tuple(robot_indices[0].tolist()) # get the robot location as a tuple
-    exit_coords = {tuple(exit_point) for exit_point in exit_indices.tolist()} # get the exit locations as a set of tuples
-    #exit_indices[0].tolist()
+    # get the robot and exit locations as tuples of Python ints
     # we have 1 robot and 1 exit in the grid so we can just take the first one
-    available_moves = CARDINAL_MOVES
-    move_name_by_delta = {delta: name for name, delta in available_moves.items()}
-    # move name by delta is a dictionary that maps the delta of the move to the name of the move
-    # the name of the move is used to turn the robot in the right direction to reach the exit
-    # the delta of the move is used to calculate the cost of the move in the A* algorithm
+    start, goal = tuple(int(v) for v in robot_pts[0]), tuple(int(v) for v in exit_pts[0])
 
-    def calculate_heuristic(coord): # heuristic is h(n) = min distance from the current cell to any exit cell
-        #heuristic can never overestimate the cost to reach the goal, so we use the minimum distance to any exit cell as the heuristic
-        row, col = coord # coord is (row,col)
-        min_distance = math.inf
-        for exit_row, exit_col in exit_coords: # if there are multiple exits 
-            dx = abs(row - exit_row) # 
-            dy = abs(col - exit_col)
-            dist = dx + dy
-            min_distance = min(min_distance, dist)
-        return min_distance
+    # soft clearance: discourages hugging walls on a 0.25 m grid without hard-blocking 0.5 m doorways
+    near_blocked = cv2.dilate((grid == BLOCKED_CELL).astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
 
-    priority_queue = [(calculate_heuristic(start_coord), 0.0, start_coord)]
+    # heuristic is h(n) = Manhattan distance from the current cell to the exit cell
+    # heuristic can never overestimate the cost to reach the goal, so we use Manhattan distance
+    heuristic = lambda p: abs(p[0] - goal[0]) + abs(p[1] - goal[1])
+
     # priority queue is a list of tuples (estimated total cost, cost to reach, coordinate)
-    cost_to_reach = {start_coord: 0.0}
-    #cost to reach is a dictionary that maps coordinates to the cost to reach that coordinate from the start coordinate
-    came_from = {}
-    # came from is a dictionary that maps coordinates to the coordinate that we came from to reach that coordinate
+    pq = [(heuristic(start), 0.0, start)]
+    # cost_to_reach is a dictionary that maps coordinates to the cost to reach that coordinate from the start coordinate
+    # came_from is a dictionary that maps coordinates to the coordinate that we came from to reach that coordinate
+    cost_to_reach, came_from = {start: 0.0}, {}
 
-    while priority_queue:
-        _, current_cost, current_coord = heapq.heappop(priority_queue)
+    while pq:
         # pop the coordinate with the lowest estimated total cost from the priority queue
-        #the first variable is the estimated total cost, we don't need it 
+        # the first variable is the estimated total cost, we don't need it
+        _, g_cost, curr = heapq.heappop(pq)
 
-        if current_coord in exit_coords:
-            # we have reached an exit, reconstruct the path
-            path = [current_coord]
-            while path[-1] != start_coord:
-                path.append(came_from[path[-1]])
+        if curr == goal:
+            # we have reached the exit, reconstruct the path
+            path = [curr]
+            while path[-1] != start:
                 # reconstruct the path by following the came_from dictionary from the exit to the start
+                path.append(came_from[path[-1]])
             path.reverse()
 
             if len(path) < 2:
                 # if the path is only 1 step long, we are already at the exit, so there is no next move
                 return None, path
 
-            first_step = path[1]
-            
-            step_delta = (first_step[0] - start_coord[0], first_step[1] - start_coord[1])
             # here we calculate the delta between the first step and the start coordinate to determine the move name
-            return move_name_by_delta.get(step_delta), path
-        # move name is the name of the move to take to reach the exit, path is the list of coordinates from the start to the exit
+            # the name of the move is used to turn the robot in the right direction to reach the exit
+            delta = (path[1][0] - start[0], path[1][1] - start[1])
+            return next(k for k, v in CARDINAL_MOVES.items() if v == delta), path
 
-        if current_cost > cost_to_reach[current_coord]:
+        if g_cost > cost_to_reach[curr]:
+            # there exists a better path, skip this one
             continue
-        # there exists a better path, skip this one
 
-        for delta_row, delta_col in available_moves.values():
+        for dr, dc in CARDINAL_MOVES.values():
             # calculate the neighbor coordinate by adding the delta to the current coordinate
-            neighbor_coord = (current_coord[0] + delta_row, current_coord[1] + delta_col)
-            n_row, n_col = neighbor_coord
-            # check if the neighbor coordinate is within the grid bounds and not blocked
+            nb = (curr[0] + dr, curr[1] + dc)
 
-            if not (0 <= n_row < rows and 0 <= n_col < cols) or grid[neighbor_coord] == BLOCKED_CELL:
+            # check if the neighbor coordinate is within the grid bounds and not blocked
+            if not (0 <= nb[0] < rows and 0 <= nb[1] < cols) or grid[nb] == BLOCKED_CELL:
                 continue
 
             # calculate the cost to reach the neighbor coordinate
-            unknown_penalty = 0.25 if grid[neighbor_coord] == UNKNOWN_CELL else 0.0
-            # small penalty is added to the cost if the neighbor cell is unknown, to encourage exploration of known free cells first
-            step_cost = 1.0 + unknown_penalty
-            tentative_cost = current_cost + step_cost
-            # if the tentative cost to reach the neighbor coordinate is less than the previously recorded cost, update the cost and path
-            if tentative_cost < cost_to_reach.get(neighbor_coord, math.inf):
-                cost_to_reach[neighbor_coord] = tentative_cost
-                came_from[neighbor_coord] = current_coord
-                estimated_total = tentative_cost + calculate_heuristic(neighbor_coord)
-                
-                heapq.heappush(priority_queue, (estimated_total, tentative_cost, neighbor_coord))
-                # we push the neighbor coordinate onto the priority queue with its estimated total cost and tentative cost
-                #priority queue is a min-heap, so the coordinate with the lowest estimated total cost will be popped first
+            # small penalty (+0.25) is added if the neighbor cell is unknown, to encourage exploration of known free cells first
+            step = 1.25 if grid[nb] == UNKNOWN_CELL else 1.0
+            # additional penalty (+0.90) is added if the cell is adjacent to a blocked cell (unless it is the goal)
+            if near_blocked[nb] and nb != goal:
+                step += 0.90
 
-    return None, [] ## the function returns None if there is no path to the exit, and an empty list for the path
+            # if the tentative cost to reach the neighbor coordinate is less than the previously recorded cost, update the cost and path
+            if g_cost + step < cost_to_reach.get(nb, float("inf")):
+                cost_to_reach[nb] = g_cost + step
+                came_from[nb] = curr
+                # we push the neighbor coordinate onto the priority queue with its estimated total cost and tentative cost
+                # priority queue is a min-heap, so the coordinate with the lowest estimated total cost will be popped first
+                heapq.heappush(pq, (g_cost + step + heuristic(nb), g_cost + step, nb))
+
+    return None, [] # the function returns None if there is no path to the exit, and an empty list for the path
