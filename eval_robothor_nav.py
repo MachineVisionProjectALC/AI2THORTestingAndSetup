@@ -17,7 +17,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
-import roomtesting as rt
+import roomtestingTEST as rt
 
 # =====================================================================
 # BENCHMARK CONFIGURATION
@@ -214,7 +214,7 @@ def build_pdf(rows, err_maps, out_pdf=OUT_PDF):
         )
         fig.text(
             0.5, 0.918,
-            "Source: roomtesting.py  |  Goal: Farthest Euclidean Reachable Point  |  Baseline vs. Deep Learning Approach",
+            "Source: roomtestingTEST.py  |  Goal: Farthest Euclidean Reachable Point  |  Baseline vs. Deep Learning Approach",
             ha="center", fontsize=9.8, color="#34495e",
         )
 
@@ -223,7 +223,7 @@ def build_pdf(rows, err_maps, out_pdf=OUT_PDF):
         ax_txt.axis("off")
         spec_text = (
             "ACTIVE ABLATION & RUN SETTINGS\n"
-            f"   USE_CLAHE={rt.USE_CLAHE}  |  USE_RANSAC_GROUND={rt.USE_RANSAC_GROUND}  |  USE_RAYCAST={rt.USE_RAYCAST}\n"
+            f"   USE_CLAHE={rt.USE_CLAHE}  |  USE_RANSAC_GROUND={rt.USE_RANSAC_GROUND}  \n"
             f"   GOAL=Farthest Point Reachable  |  MAX_STEPS={rt.MAX_STEPS}"
         )
         ax_txt.text(
