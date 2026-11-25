@@ -108,9 +108,8 @@ OBS_MIN_H       = 0.12
 # note this assumes the floors are clear. (they are in RoboTHOR)
 OBS_MAX_H       = 1.50
 # object maximum height to be detected ~ 1.5 meters
-FLOOR_BAND_MIN  = 0.08
-# unused
-K_OBS, K_FLOOR  = 3.0, 2.5   # obstacle: h > K_OBS*sigma_h ; floor: |h| < K_FLOOR*sigma_h
+
+K_OBS  = 3.0   # obstacle: h > K_OBS*sigma_h 
 # K_FLOOR is unused
 AREA_OBS_M2     = 0.004      # observed obstacle surface per cell (~6% of a cell) -> counts as a hit
 AREA_FLOOR_M2   = 0.006      # observed floor per cell (~10% of a cell) -> counts as seen floor
@@ -118,9 +117,9 @@ AREA_FLOOR_M2   = 0.006      # observed floor per cell (~10% of a cell) -> count
 #Bayesian log-odds inverse sensor model (Thrun ch. 9), updated once per cell per frame 
 def _logit(p): return math.log(p / (1.0 - p))
 # use logit to represent probabilities
-P_HIT, P_FLOOR, P_RAY, P_CLAMP = 0.82, 0.36, 0.45, 0.97
+P_HIT, P_FLOOR, P_CLAMP = 0.82, 0.36, 0.97
 P_OCC_THR, P_FREE_THR, P_STRICT = 0.80, 0.30, 0.95   # two hits cross P_OCC_THR, one floor view crosses P_FREE_THR
-L_HIT, L_FLOOR, L_RAY = _logit(P_HIT), _logit(P_FLOOR), _logit(P_RAY)
+L_HIT, L_FLOOR = _logit(P_HIT), _logit(P_FLOOR)
 L_MAX, L_OCC, L_FREE, L_STRICT = _logit(P_CLAMP), _logit(P_OCC_THR), _logit(P_FREE_THR), _logit(P_STRICT)
 BUMP_LOCK       = 4.0    # log-odds written ONLY by a physical collision (> L_MAX, never touched by vision)
 VISIT_LOCK      = -4.0   # log-odds of cells the robot has stood on
